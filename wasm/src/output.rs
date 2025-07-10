@@ -1,15 +1,16 @@
-use crate::models::input::*;
+use crate::input::*;
 use crate::types::*;
 use anyhow::{Result, anyhow};
-use core::f32;
 use multimap::MultiMap;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Serialize)]
 struct CollisionManager {
+    #[serde(skip)]
     indices: HashMap<(u32, u32), Vec<usize>>,
     collisions: Vec<Vec<Node>>,
+    #[serde(skip)]
     unit_size: GraphLength,
     x_min: GraphLength,
     x_max: GraphLength,
@@ -23,13 +24,13 @@ impl CollisionManager {
             indices: HashMap::new(),
             collisions: Vec::new(),
             unit_size,
-            x_min: GraphLength::from(f32::INFINITY),
-            x_max: GraphLength::from(f32::NEG_INFINITY),
-            y_min: GraphLength::from(f32::INFINITY),
-            y_max: GraphLength::from(f32::NEG_INFINITY),
+            x_min: GraphLength::from(f64::INFINITY),
+            x_max: GraphLength::from(f64::NEG_INFINITY),
+            y_min: GraphLength::from(f64::INFINITY),
+            y_max: GraphLength::from(f64::NEG_INFINITY),
         }
     }
-    fn update_bounds(&mut self, bounds: (f32, f32, f32, f32)) {
+    fn update_bounds(&mut self, bounds: (f64, f64, f64, f64)) {
         let (x_min, x_max, y_min, y_max) = bounds;
 
         // 更新全局边界
@@ -46,10 +47,10 @@ impl CollisionManager {
         // 使用迭代器一次性计算边界
         let bounds = nodes.iter().fold(
             (
-                f32::INFINITY,
-                f32::NEG_INFINITY,
-                f32::INFINITY,
-                f32::NEG_INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
             ),
             |(x_min, x_max, y_min, y_max), node| {
                 let (x, y) = (node.0.value(), node.1.value());
@@ -185,10 +186,27 @@ impl Output {
                 &network.stations,
                 &network.intervals,
                 config.position_axis_scale_mode,
-                config.unit_length,
+                config.unit_length * config.position_axis_scale,
             )?;
-
-        let collision = CollisionManager::new(config.unit_length * 2.0);
+        let mut collision = CollisionManager::new(config.unit_length * 2.0);
+        collision.update_bounds((
+            config
+                .beg
+                .to_graph_length(
+                    config.unit_length * config.time_axis_scale,
+                    config.time_axis_scale_mode,
+                )
+                .value(),
+            config
+                .end
+                .to_graph_length(
+                    config.unit_length * config.time_axis_scale,
+                    config.time_axis_scale_mode,
+                )
+                .value(),
+            stations_draw_info.first().map_or(0.0, |(_, y)| y.value()),
+            stations_draw_info.last().map_or(0.0, |(_, y)| y.value()),
+        ));
         let mut trains: Vec<OutputTrain> = Vec::with_capacity(trains_draw_info.len());
 
         for train in trains_draw_info {
@@ -197,7 +215,7 @@ impl Output {
                     &stations_draw_info,
                     &station_indices,
                     network.trains.get(&train).unwrap(),
-                    config.unit_length,
+                    config.unit_length * config.time_axis_scale,
                     config.time_axis_scale_mode,
                 )
                 .unwrap(),
@@ -244,26 +262,26 @@ impl Output {
                         entry.arrival.to_graph_length(unit_length, scale_mode),
                         stations_draw_info[*graph_idx].1,
                     ));
-                    matched_edge.push(Node(
-                        entry.departure.to_graph_length(unit_length, scale_mode),
-                        stations_draw_info[*graph_idx].1,
-                    ));
+                    if entry.arrival != entry.departure {
+                        matched_edge.push(Node(
+                            entry.departure.to_graph_length(unit_length, scale_mode),
+                            stations_draw_info[*graph_idx].1,
+                        ));
+                    }
                     remaining.push((matched_edge, *graph_idx));
                 } else {
                     // start a new edge, if not found
-                    remaining.push((
-                        vec![
-                            Node(
-                                entry.arrival.to_graph_length(unit_length, scale_mode),
-                                stations_draw_info[*graph_idx].1,
-                            ),
-                            Node(
-                                entry.departure.to_graph_length(unit_length, scale_mode),
-                                stations_draw_info[*graph_idx].1,
-                            ),
-                        ],
-                        *graph_idx,
-                    ));
+                    let mut new_edge = vec![Node(
+                        entry.arrival.to_graph_length(unit_length, scale_mode),
+                        stations_draw_info[*graph_idx].1,
+                    )];
+                    if entry.arrival != entry.departure {
+                        new_edge.push(Node(
+                            entry.departure.to_graph_length(unit_length, scale_mode),
+                            stations_draw_info[*graph_idx].1,
+                        ));
+                    }
+                    remaining.push((new_edge, *graph_idx));
                 }
             }
             if !local_edges.is_empty() {

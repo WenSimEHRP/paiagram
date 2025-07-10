@@ -43,7 +43,7 @@ impl Time {
         (self.0 / 3600) % 24
     }
     pub fn to_graph_length(&self, unit_length: GraphLength, scale_mode: ScaleMode) -> GraphLength {
-        let hours = self.0 as f32 / 3600.0;
+        let hours = self.0 as f64 / 3600.0;
         unit_length * hours
     }
 }
@@ -58,30 +58,35 @@ impl IntervalLength {
     pub fn meters(&self) -> u32 {
         self.0
     }
-    pub fn kilometers(&self) -> f32 {
-        self.0 as f32 / 1000.0
+    pub fn kilometers(&self) -> f64 {
+        self.0 as f64 / 1000.0
     }
     pub fn to_graph_length(&self, unit_length: GraphLength, scale_mode: ScaleMode) -> GraphLength {
-        unit_length * self.kilometers()
+        let length = match scale_mode {
+            ScaleMode::Linear => self.kilometers(),
+            ScaleMode::Logarithmic => self.kilometers().ln().max(1.0),
+            ScaleMode::Uniform => 1.0,
+        };
+        unit_length * length
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Add, Sub, Deserialize, Serialize, AddAssign)]
-pub struct GraphLength(f32);
+pub struct GraphLength(f64);
 
 impl GraphLength {
-    pub fn value(&self) -> f32 {
+    pub fn value(&self) -> f64 {
         self.0
     }
 }
 
-impl From<f32> for GraphLength {
-    fn from(value: f32) -> Self {
+impl From<f64> for GraphLength {
+    fn from(value: f64) -> Self {
         GraphLength(value)
     }
 }
 
-impl ops::Mul<GraphLength> for f32 {
+impl ops::Mul<GraphLength> for f64 {
     type Output = GraphLength;
 
     fn mul(self, rhs: GraphLength) -> Self::Output {
@@ -89,16 +94,16 @@ impl ops::Mul<GraphLength> for f32 {
     }
 }
 
-impl ops::Mul<f32> for GraphLength {
+impl ops::Mul<f64> for GraphLength {
     type Output = GraphLength;
 
-    fn mul(self, rhs: f32) -> Self::Output {
+    fn mul(self, rhs: f64) -> Self::Output {
         GraphLength(self.0 * rhs)
     }
 }
 
 impl ops::Div<GraphLength> for GraphLength {
-    type Output = f32;
+    type Output = f64;
 
     fn div(self, rhs: GraphLength) -> Self::Output {
         self.0 / rhs.0
@@ -112,12 +117,12 @@ pub enum ScaleMode {
     Uniform,
 }
 
-#[derive(Debug, Serialize, Clone, Copy)]
+#[derive(Debug, Serialize, Clone, Copy, Deserialize)]
 pub struct Node(pub GraphLength, pub GraphLength);
 
 impl Node {
     /// enters another node, outputs the slope
-    pub fn slope(&self, other: &Node) -> f32 {
+    pub fn slope(&self, other: &Node) -> f64 {
         if self.0 == other.0 {
             return 0.0; // vertical line
         }

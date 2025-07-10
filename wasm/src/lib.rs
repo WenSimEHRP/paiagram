@@ -2,10 +2,11 @@ use anyhow::Context;
 use ciborium::{from_reader, into_writer};
 use typst_wasm_protocol::wasm_export;
 
-mod models;
+mod input;
+mod output;
 mod types;
-use models::input::{Network, NetworkConfig};
-use models::output::Output;
+use input::{Network, NetworkConfig};
+use output::Output;
 
 #[wasm_export]
 fn process(network: &[u8], config: &[u8]) -> Result<Vec<u8>, String> {
@@ -13,18 +14,15 @@ fn process(network: &[u8], config: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 fn process_internal(network: &[u8], config: &[u8]) -> anyhow::Result<Vec<u8>> {
-    let network: Network = from_reader(network)
-        .context("Failed to deserialize network")?;
+    let network: Network = from_reader(network).context("Failed to deserialize network")?;
 
-    let config: NetworkConfig = from_reader(config)
-        .context("Failed to deserialize config")?;
+    let config: NetworkConfig = from_reader(config).context("Failed to deserialize config")?;
 
     let output = Output::new(&network, &config)
         .context("Failed to create output from network and config")?;
 
     let mut result = Vec::new();
-    into_writer(&output, &mut result)
-        .context("Failed to serialize output")?;
+    into_writer(&output, &mut result).context("Failed to serialize output")?;
 
     Ok(result)
 }

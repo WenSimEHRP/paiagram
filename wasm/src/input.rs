@@ -1,10 +1,10 @@
 use crate::types::*;
 use anyhow::Result;
+use multimap::MultiMap;
 use serde::Deserialize;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use multimap::MultiMap;
 
 /// hash string to ids
 fn hash_id(s: &str) -> u64 {
@@ -109,7 +109,14 @@ impl TryFrom<NetworkHelper> for Network {
                     actions: entry.actions.unwrap_or_default(),
                 });
             }
-            trains.insert(id, Train { name, schedule, schedule_index });
+            trains.insert(
+                id,
+                Train {
+                    name,
+                    schedule,
+                    schedule_index,
+                },
+            );
         }
         Ok(Network {
             stations,
@@ -182,6 +189,8 @@ pub struct NetworkConfig {
     pub unit_length: GraphLength,
     pub position_axis_scale_mode: ScaleMode,
     pub time_axis_scale_mode: ScaleMode,
+    pub position_axis_scale: f64,
+    pub time_axis_scale: f64,
 }
 
 #[derive(Deserialize)]
@@ -192,6 +201,8 @@ struct NetworkConfigHelper {
     unit_length: GraphLength,
     position_axis_scale_mode: ScaleMode,
     time_axis_scale_mode: ScaleMode,
+    position_axis_scale: f64,
+    time_axis_scale: f64,
 }
 
 impl TryFrom<NetworkConfigHelper> for NetworkConfig {
@@ -202,44 +213,53 @@ impl TryFrom<NetworkConfigHelper> for NetworkConfig {
                 "You must specify at least one station to draw"
             ));
         }
-        let mut stations_to_draw = Vec::with_capacity(helper.stations_to_draw.len());
+
+        let stations_to_draw: Vec<StationID> = helper
+            .stations_to_draw
+            .iter()
+            .map(|name| hash_id(name))
+            .collect();
+
         let mut intervals: HashSet<IntervalID> =
             HashSet::with_capacity(helper.stations_to_draw.len() - 1);
-        for i in 0..helper.stations_to_draw.len() {
-            let to = hash_id(&helper.stations_to_draw[i]);
-            stations_to_draw.push(to);
-            // skip this for the first element
-            if i == 0 {
+
+        for (i, window) in helper.stations_to_draw.windows(2).enumerate() {
+            let [prev_name, curr_name] = window else {
                 continue;
-            }
-            // check if the previous station is the same as the current one
-            let from = stations_to_draw[i - 1];
-            if from == to {
+            };
+
+            let prev_id = stations_to_draw[i];
+            let curr_id = stations_to_draw[i + 1];
+
+            if prev_id == curr_id {
                 return Err(anyhow::anyhow!(
                     "Consecutive stations cannot be the same: {}",
-                    helper.stations_to_draw[i]
+                    curr_name
                 ));
             }
-            if !intervals.insert((from, to)) {
+
+            if !intervals.insert((prev_id, curr_id)) {
                 return Err(anyhow::anyhow!(
                     "Duplicate interval from '{}' to '{}'",
-                    helper.stations_to_draw[i - 1],
-                    helper.stations_to_draw[i]
+                    prev_name,
+                    curr_name
                 ));
             }
-            if !intervals.insert((to, from)) {
+            if !intervals.insert((curr_id, prev_id)) {
                 return Err(anyhow::anyhow!(
                     "Duplicate interval from '{}' to '{}'",
-                    helper.stations_to_draw[i],
-                    helper.stations_to_draw[i - 1]
+                    curr_name,
+                    prev_name
                 ));
             }
         }
+
         if helper.beg.seconds() > helper.end.seconds() {
             return Err(anyhow::anyhow!(
                 "The beginning time cannot be after the end time"
             ));
         }
+
         Ok(NetworkConfig {
             stations_to_draw,
             beg: helper.beg,
@@ -247,6 +267,8 @@ impl TryFrom<NetworkConfigHelper> for NetworkConfig {
             unit_length: helper.unit_length,
             position_axis_scale_mode: helper.position_axis_scale_mode,
             time_axis_scale_mode: helper.time_axis_scale_mode,
+            position_axis_scale: helper.position_axis_scale,
+            time_axis_scale: helper.time_axis_scale,
         })
     }
 }
