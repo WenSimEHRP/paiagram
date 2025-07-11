@@ -250,23 +250,42 @@ impl Output {
 
         // iterate over all edges and add collision nodes
         let (label_width, label_height) = train.label_size;
-        for edge in &edges {
+        for edge in &mut edges {
             // precondition: an edge will have at least one node
-            let first_node = edge.first().unwrap();
-            let last_node = edge.last().unwrap();
-            collision_manager.resolve_collisions(
+            let first_node = *edge.first().unwrap();
+            let last_node = *edge.last().unwrap();
+            let r1 = collision_manager.resolve_collisions(
                 &rotate(
                     vec![
                         Node(first_node.0 - label_width, first_node.1 - label_height),
                         Node(first_node.0, first_node.1 - label_height),
-                        first_node.clone(),
+                        first_node,
                         Node(first_node.0 - label_width, first_node.1),
                     ],
-                    first_node.clone(),
+                    first_node,
                     20.0f64.to_radians(),
                 ),
-                90.0f64.to_radians(),
-            )?;
+                -90.0f64.to_radians(),
+            );
+            if let Ok(length) = r1 {
+                edge.insert(0, Node(first_node.0, first_node.1 - length));
+            }
+            let r2 = collision_manager.resolve_collisions(
+                &rotate(
+                    vec![
+                        Node(last_node.0 + label_width, last_node.1 - label_height),
+                        Node(last_node.0, last_node.1 - label_height),
+                        last_node,
+                        Node(last_node.0 + label_width, last_node.1),
+                    ],
+                    last_node,
+                    -20.0f64.to_radians(),
+                ),
+                -90.0f64.to_radians(),
+            );
+            if let Ok(length) = r2 {
+                edge.push(Node(last_node.0, last_node.1 - length));
+            }
         }
 
         Ok(OutputTrain { edges })

@@ -98,9 +98,9 @@
         beg: 0,
         end: 24 * 60 * 60,
         unit_length: 1cm / 1pt,
-        position_axis_scale_mode: "Uniform",
+        position_axis_scale_mode: "Logarithmic",
         time_axis_scale_mode: "Linear",
-        position_axis_scale: 0.7,
+        position_axis_scale: 0.4,
         time_axis_scale: 4.0,
       )),
     ),
@@ -190,22 +190,6 @@
         ),
       )
 
-      for col in a.collision_manager.collisions {
-        let (first, ..rest) = col
-        let ops = (
-          curve.move(pt(first)),
-          ..rest.map(it => curve.line(pt(it))),
-        )
-        place-curve(
-          curve(
-            stroke: blue,
-            fill: blue.transparentize(80%),
-            ..ops,
-            curve.close(),
-          ),
-        )
-      }
-
       {
         for train in a.trains {
           for edge in train.edges {
@@ -237,6 +221,22 @@
             )
           }
         }
+      }
+
+      for col in a.collision_manager.collisions {
+        let (first, ..rest) = col
+        let ops = (
+          curve.move(pt(first)),
+          ..rest.map(it => curve.line(pt(it))),
+        )
+        place-curve(
+          curve(
+            stroke: blue,
+            fill: blue.transparentize(80%),
+            ..ops,
+            curve.close(),
+          ),
+        )
       }
     },
   )

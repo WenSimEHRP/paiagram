@@ -168,17 +168,10 @@ impl CollisionManager {
                         return Err(anyhow::anyhow!("Cannot resolve collision: movement direction is perpendicular to collision normal"));
                     }
 
-                    // Calculate required distance to resolve collision
+                    // Calculate required distance to resolve collision (always positive)
                     let required_distance = overlap / mtv_dot_move.abs();
 
-                    // Ensure we move away from collision (positive distance)
-                    let final_distance = if mtv_dot_move > 0.0 {
-                        required_distance
-                    } else {
-                        -required_distance
-                    };
-
-                    max_required_distance = max_required_distance.max(final_distance);
+                    max_required_distance = max_required_distance.max(required_distance);
                 }
             }
         }
@@ -233,6 +226,11 @@ impl CollisionManager {
                 Ok(accumulated_distance)
             },
             Some(required_distance) => {
+                // if the required distance to move is smaller than 1pt, then consider it resolved
+                if f64::from(required_distance) < 1.0 {
+                    self.add_collision(collision.to_vec());
+                    return Ok(accumulated_distance);
+                }
                 // Found collision, move and check again
                 let new_total_distance = accumulated_distance + required_distance;
 
