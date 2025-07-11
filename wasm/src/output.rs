@@ -1,89 +1,10 @@
+use crate::coillision::*;
 use crate::input::*;
 use crate::types::*;
 use anyhow::{Result, anyhow};
 use multimap::MultiMap;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
-
-#[derive(Serialize)]
-struct CollisionManager {
-    #[serde(skip)]
-    indices: HashMap<(u32, u32), Vec<usize>>,
-    collisions: Vec<Vec<Node>>,
-    #[serde(skip)]
-    unit_size: GraphLength,
-    x_min: GraphLength,
-    x_max: GraphLength,
-    y_min: GraphLength,
-    y_max: GraphLength,
-}
-
-impl CollisionManager {
-    fn new(unit_size: GraphLength) -> Self {
-        Self {
-            indices: HashMap::new(),
-            collisions: Vec::new(),
-            unit_size,
-            x_min: GraphLength::from(f64::INFINITY),
-            x_max: GraphLength::from(f64::NEG_INFINITY),
-            y_min: GraphLength::from(f64::INFINITY),
-            y_max: GraphLength::from(f64::NEG_INFINITY),
-        }
-    }
-    fn update_bounds(&mut self, bounds: (f64, f64, f64, f64)) {
-        let (x_min, x_max, y_min, y_max) = bounds;
-
-        // 更新全局边界
-        self.x_min = GraphLength::from(self.x_min.value().min(x_min));
-        self.x_max = GraphLength::from(self.x_max.value().max(x_max));
-        self.y_min = GraphLength::from(self.y_min.value().min(y_min));
-        self.y_max = GraphLength::from(self.y_max.value().max(y_max));
-    }
-    fn add(&mut self, nodes: &[Node]) {
-        if nodes.is_empty() {
-            return;
-        }
-
-        // 使用迭代器一次性计算边界
-        let bounds = nodes.iter().fold(
-            (
-                f64::INFINITY,
-                f64::NEG_INFINITY,
-                f64::INFINITY,
-                f64::NEG_INFINITY,
-            ),
-            |(x_min, x_max, y_min, y_max), node| {
-                let (x, y) = (node.0.value(), node.1.value());
-                (x_min.min(x), x_max.max(x), y_min.min(y), y_max.max(y))
-            },
-        );
-
-        self.update_bounds(bounds);
-
-        // 计算网格索引
-        let unit_value = self.unit_size.value();
-        let indices = (
-            (bounds.0 / unit_value).floor() as u32,
-            (bounds.1 / unit_value).ceil() as u32,
-            (bounds.2 / unit_value).floor() as u32,
-            (bounds.3 / unit_value).ceil() as u32,
-        );
-
-        let collision_index = self.collisions.len();
-
-        // 批量更新网格索引
-        for x in indices.0..=indices.1 {
-            for y in indices.2..=indices.3 {
-                self.indices
-                    .entry((x, y))
-                    .or_insert_with(Vec::new)
-                    .push(collision_index);
-            }
-        }
-
-        self.collisions.push(nodes.to_vec());
-    }
-}
 
 #[derive(Serialize)]
 struct OutputTrain {
@@ -93,7 +14,7 @@ struct OutputTrain {
 
 #[derive(Serialize)]
 pub struct Output {
-    collision: CollisionManager,
+    collision_manager: CollisionManager,
     trains: Vec<OutputTrain>,
     graph_intervals: Vec<GraphLength>,
 }
@@ -105,11 +26,13 @@ impl Output {
         intervals: &HashMap<IntervalID, Interval>,
         scale_mode: ScaleMode,
         unit_length: GraphLength,
+        label_beg: GraphLength,
+        collision_manager: &mut CollisionManager,
     ) -> Result<(
         Vec<(StationID, GraphLength)>,
         MultiMap<StationID, usize>,
         HashSet<TrainID>,
-        Vec<GraphLength>, // 新增：相对间隔
+        Vec<GraphLength>,
     )> {
         if stations_to_draw.is_empty() {
             return Err(anyhow!("No stations to draw"));
@@ -138,6 +61,14 @@ impl Output {
         let beg = stations_to_draw[0];
         station_draw_info.push((beg, position));
         station_indices.insert(beg, 0);
+        // handle the first station label
+        let (width, height) = stations.get(&beg).unwrap().label_size;
+        collision_manager.add_collision(vec![
+            Node(label_beg - width - 3.0.into(), position - height * 0.5),
+            Node(label_beg - 3.0.into(), position - height * 0.5),
+            Node(label_beg - 3.0.into(), position + height * 0.5),
+            Node(label_beg - width - 3.0.into(), position + height * 0.5),
+        ]);
 
         for (window_idx, win) in stations_to_draw.windows(2).enumerate() {
             let [beg, end] = win else {
@@ -167,19 +98,26 @@ impl Output {
                 }
             };
 
-            // 存储相对间隔
             graph_intervals.push(interval_length);
-
-            // 更新绝对位置
             position += interval_length;
             station_draw_info.push((*end, position));
             station_indices.insert(*end, window_idx + 1);
+
+            let (width, height) = stations.get(end).unwrap().label_size;
+            // insert station label. nodes are in absolute coordinates
+            collision_manager.add_collision(vec![
+                Node(label_beg - width - 3.0.into(), position - height * 0.5),
+                Node(label_beg - 3.0.into(), position - height * 0.5),
+                Node(label_beg - 3.0.into(), position + height * 0.5),
+                Node(label_beg - width - 3.0.into(), position + height * 0.5),
+            ]);
         }
 
         Ok((station_draw_info, station_indices, trains, graph_intervals))
     }
 
-    pub fn new(network: &Network, config: &NetworkConfig) -> Result<Self> {
+    pub fn new(network: Network, config: &NetworkConfig) -> Result<Self> {
+        let mut collision_manager = CollisionManager::new(config.unit_length);
         let (stations_draw_info, station_indices, trains_draw_info, graph_intervals) =
             Self::make_station_draw_info(
                 &config.stations_to_draw,
@@ -187,9 +125,14 @@ impl Output {
                 &network.intervals,
                 config.position_axis_scale_mode,
                 config.unit_length * config.position_axis_scale,
+                config.beg.to_graph_length(
+                    config.unit_length * config.time_axis_scale,
+                    config.time_axis_scale_mode,
+                ),
+                &mut collision_manager,
             )?;
-        let mut collision = CollisionManager::new(config.unit_length * 2.0);
-        collision.update_bounds((
+
+        collision_manager.update_x_min(GraphLength::from(
             config
                 .beg
                 .to_graph_length(
@@ -197,6 +140,8 @@ impl Output {
                     config.time_axis_scale_mode,
                 )
                 .value(),
+        ));
+        collision_manager.update_x_max(GraphLength::from(
             config
                 .end
                 .to_graph_length(
@@ -204,7 +149,11 @@ impl Output {
                     config.time_axis_scale_mode,
                 )
                 .value(),
+        ));
+        collision_manager.update_y_min(GraphLength::from(
             stations_draw_info.first().map_or(0.0, |(_, y)| y.value()),
+        ));
+        collision_manager.update_y_max(GraphLength::from(
             stations_draw_info.last().map_or(0.0, |(_, y)| y.value()),
         ));
         let mut trains: Vec<OutputTrain> = Vec::with_capacity(trains_draw_info.len());
@@ -217,13 +166,14 @@ impl Output {
                     network.trains.get(&train).unwrap(),
                     config.unit_length * config.time_axis_scale,
                     config.time_axis_scale_mode,
+                    &mut collision_manager,
                 )
                 .unwrap(),
             )
         }
 
         Ok(Self {
-            collision,
+            collision_manager,
             trains,
             graph_intervals,
         })
@@ -234,6 +184,7 @@ impl Output {
         train: &Train,
         unit_length: GraphLength,
         scale_mode: ScaleMode,
+        collision_manager: &mut CollisionManager,
     ) -> Result<OutputTrain> {
         let schedule = &train.schedule;
         let mut edges: Vec<Vec<Node>> = Vec::new();
@@ -296,6 +247,28 @@ impl Output {
         }
         // handle the remaining local edges
         edges.extend(local_edges.into_iter().map(|(nodes, _)| nodes));
+
+        // iterate over all edges and add collision nodes
+        let (label_width, label_height) = train.label_size;
+        for edge in &edges {
+            // precondition: an edge will have at least one node
+            let first_node = edge.first().unwrap();
+            let last_node = edge.last().unwrap();
+            collision_manager.resolve_collisions(
+                &rotate(
+                    vec![
+                        Node(first_node.0 - label_width, first_node.1 - label_height),
+                        Node(first_node.0, first_node.1 - label_height),
+                        first_node.clone(),
+                        Node(first_node.0 - label_width, first_node.1),
+                    ],
+                    first_node.clone(),
+                    20.0f64.to_radians(),
+                ),
+                90.0f64.to_radians(),
+            )?;
+        }
+
         Ok(OutputTrain { edges })
     }
 }

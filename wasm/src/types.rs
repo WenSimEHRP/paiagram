@@ -71,12 +71,18 @@ impl IntervalLength {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Add, Sub, Deserialize, Serialize, AddAssign)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Add, Sub, Deserialize, Serialize, AddAssign)]
 pub struct GraphLength(f64);
 
 impl GraphLength {
     pub fn value(&self) -> f64 {
         self.0
+    }
+}
+
+impl From<GraphLength> for f64 {
+    fn from(value: GraphLength) -> Self {
+        value.0
     }
 }
 

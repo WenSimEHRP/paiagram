@@ -5,6 +5,7 @@ use typst_wasm_protocol::wasm_export;
 mod input;
 mod output;
 mod types;
+mod coillision;
 use input::{Network, NetworkConfig};
 use output::Output;
 
@@ -18,7 +19,7 @@ fn process_internal(network: &[u8], config: &[u8]) -> anyhow::Result<Vec<u8>> {
 
     let config: NetworkConfig = from_reader(config).context("Failed to deserialize config")?;
 
-    let output = Output::new(&network, &config)
+    let output = Output::new(network, &config)
         .context("Failed to create output from network and config")?;
 
     let mut result = Vec::new();

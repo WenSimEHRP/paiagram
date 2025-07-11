@@ -104,12 +104,14 @@
   for i in range(available_stations.len() - 1) {
     let beg = available_stations.at(i)
     let end = available_stations.at(i + 1)
-    stations.insert(beg.zhanming, (:))
+    let label = measure(pad(.15em, beg.zhanming))
+    stations.insert(beg.zhanming, (label_size: (label.width / 1pt, label.height / 1pt)))
     intervals.push(((beg.zhanming, end.zhanming), (length: int(end.licheng - beg.licheng) * 1000)))
   }
   // handle the last station
   let last_station = available_stations.at(available_stations.len() - 1)
-  stations.insert(last_station.zhanming, (:))
+  let last-label = measure(pad(.15em, last_station.zhanming))
+  stations.insert(last_station.zhanming, (label_size: (last-label.width / 1pt, last-label.height / 1pt)))
   for train in qetrc.at("trains") {
     let name = train.at("checi").at(0)
     let schedule = ()
@@ -123,9 +125,11 @@
         departure: departure,
       ))
     }
+    let label = measure(name)
     trains.insert(
       name,
       (
+        label_size: (label.width / 1pt, label.height / 1pt),
         schedule: schedule,
       ),
     )

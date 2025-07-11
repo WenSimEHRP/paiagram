@@ -39,6 +39,7 @@ impl TryFrom<NetworkHelper> for Network {
         for (name, helper) in helper.stations {
             let id = hash_id(&name);
             let station = Station {
+                label_size: helper.label_size,
                 milestones: helper.milestones,
                 tracks: helper.tracks.unwrap_or(1),
                 name,
@@ -94,6 +95,7 @@ impl TryFrom<NetworkHelper> for Network {
         }
         for (name, helper) in helper.trains {
             let id = hash_id(&name);
+            let label_size = helper.label_size;
             let mut schedule = Vec::with_capacity(helper.schedule.len());
             let mut schedule_index: MultiMap<StationID, usize> = MultiMap::new();
             for (idx, entry) in helper.schedule.into_iter().enumerate() {
@@ -113,6 +115,7 @@ impl TryFrom<NetworkHelper> for Network {
                 id,
                 Train {
                     name,
+                    label_size,
                     schedule,
                     schedule_index,
                 },
@@ -133,22 +136,26 @@ pub struct Station {
     // those fields are completed afterwards
     pub intervals: HashSet<IntervalID>,
     pub trains: HashSet<TrainID>,
+    pub label_size: (GraphLength, GraphLength),
 }
 
 #[derive(Deserialize)]
 struct StationHelper {
+    label_size: (GraphLength, GraphLength),
     milestones: Option<HashMap<String, IntervalLength>>,
     tracks: Option<u16>,
 }
 
 pub struct Train {
     pub name: String,
+    pub label_size: (GraphLength, GraphLength),
     pub schedule: Vec<ScheduleEntry>,
     pub schedule_index: MultiMap<StationID, usize>,
 }
 
 #[derive(Deserialize)]
 struct TrainHelper {
+    label_size: (GraphLength, GraphLength),
     schedule: Vec<ScheduleEntryHelper>,
 }
 
