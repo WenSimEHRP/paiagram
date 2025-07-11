@@ -20,8 +20,21 @@ enum LabelPosition {
 
 #[derive(Serialize)]
 struct OutputTrain {
-    edges: Vec<Vec<Node>>,
+    edges: Vec<OutputEdge>,
+    name: String,
     // TODO colors
+}
+
+#[derive(Serialize)]
+struct OutputEdge {
+    edges: Vec<Node>,
+    labels: Option<OutputLabel>,
+}
+
+#[derive(Serialize)]
+struct OutputLabel {
+    start: (Node, f64),
+    end: (Node, f64),
 }
 
 #[derive(Serialize)]
@@ -58,16 +71,10 @@ impl Output {
         let time_unit_length = self.config.unit_length * self.config.time_axis_scale;
 
         self.collision_manager.update_x_min(GraphLength::from(
-            self.config
-                .beg
-                .to_graph_length(time_unit_length)
-                .value(),
+            self.config.beg.to_graph_length(time_unit_length).value(),
         ));
         self.collision_manager.update_x_max(GraphLength::from(
-            self.config
-                .end
-                .to_graph_length(time_unit_length)
-                .value(),
+            self.config.end.to_graph_length(time_unit_length).value(),
         ));
         self.collision_manager.update_y_min(GraphLength::from(
             self.stations_draw_info
@@ -121,9 +128,10 @@ impl Output {
         let mut position: GraphLength = 0.0.into();
 
         let unit_length = self.config.unit_length * self.config.position_axis_scale;
-        let label_start = self.config.beg.to_graph_length(
-            self.config.unit_length * self.config.time_axis_scale,
-        );
+        let label_start = self
+            .config
+            .beg
+            .to_graph_length(self.config.unit_length * self.config.time_axis_scale);
 
         // process the first station
         let first_station = self.config.stations_to_draw[0];
@@ -147,8 +155,12 @@ impl Output {
             }
 
             let interval_length = match (
-                intervals.get(&(*start_station, *end_station)).map(|it| it.length),
-                intervals.get(&(*end_station, *start_station)).map(|it| it.length),
+                intervals
+                    .get(&(*start_station, *end_station))
+                    .map(|it| it.length),
+                intervals
+                    .get(&(*end_station, *start_station))
+                    .map(|it| it.length),
             ) {
                 (Some(len1), Some(len2)) => {
                     IntervalLength::new((len1.meters() + len2.meters()) / 2)
@@ -186,87 +198,94 @@ impl Output {
 
     fn make_train(&mut self, train: &Train) -> Result<OutputTrain> {
         let schedule = &train.schedule;
-        let mut edges: Vec<Vec<Node>> = Vec::new();
+        let mut output_edges: Vec<OutputEdge> = Vec::new();
         let mut local_edges: Vec<(Vec<Node>, usize)> = Vec::new();
         let unit_length = self.config.unit_length * self.config.time_axis_scale;
 
-        for entry in schedule {
-            let Some(graph_idxs) = self.station_indices.get_vec(&entry.station) else {
+        for schedule_entry in schedule {
+            let Some(graph_indices) = self.station_indices.get_vec(&schedule_entry.station) else {
                 if local_edges.is_empty() {
                     continue;
                 }
-                edges.extend(
-                    std::mem::take(&mut local_edges)
-                        .into_iter()
-                        .map(|(nodes, _)| nodes),
-                );
+                // Convert local edges to OutputEdge and add to output_edges
+                output_edges.extend(std::mem::take(&mut local_edges).into_iter().map(
+                    |(edge_nodes, _)| OutputEdge {
+                        edges: edge_nodes,
+                        labels: None,
+                    },
+                ));
                 continue;
             };
-            let mut remaining: Vec<(Vec<Node>, usize)> = Vec::new();
-            for graph_idx in graph_idxs {
-                if let Some(pos) = local_edges
+            let mut remaining_edges: Vec<(Vec<Node>, usize)> = Vec::new();
+            for &graph_index in graph_indices {
+                if let Some(edge_position) = local_edges
                     .iter()
-                    .position(|(_, last_graph_idx)| graph_idx.abs_diff(*last_graph_idx) == 1)
+                    .position(|(_, last_graph_index)| graph_index.abs_diff(*last_graph_index) == 1)
                 {
-                    let (mut matched_edge, _) = local_edges.remove(pos);
+                    let (mut matched_edge_nodes, _) = local_edges.remove(edge_position);
                     // add nodes to remaining
-                    matched_edge.push(Node(
-                        entry
-                            .arrival
-                            .to_graph_length(unit_length),
-                        self.stations_draw_info[*graph_idx].1,
+                    matched_edge_nodes.push(Node(
+                        schedule_entry.arrival.to_graph_length(unit_length),
+                        self.stations_draw_info[graph_index].1,
                     ));
-                    if entry.arrival != entry.departure {
-                        matched_edge.push(Node(
-                            entry
-                                .departure
-                                .to_graph_length(unit_length),
-                            self.stations_draw_info[*graph_idx].1,
+                    if schedule_entry.arrival != schedule_entry.departure {
+                        matched_edge_nodes.push(Node(
+                            schedule_entry.departure.to_graph_length(unit_length),
+                            self.stations_draw_info[graph_index].1,
                         ));
                     }
-                    remaining.push((matched_edge, *graph_idx));
+                    remaining_edges.push((matched_edge_nodes, graph_index));
                 } else {
                     // start a new edge, if not found
-                    let mut new_edge = vec![Node(
-                        entry
-                            .arrival
-                            .to_graph_length(unit_length),
-                        self.stations_draw_info[*graph_idx].1,
+                    let mut new_edge_nodes = vec![Node(
+                        schedule_entry.arrival.to_graph_length(unit_length),
+                        self.stations_draw_info[graph_index].1,
                     )];
-                    if entry.arrival != entry.departure {
-                        new_edge.push(Node(
-                            entry
-                                .departure
-                                .to_graph_length(unit_length),
-                            self.stations_draw_info[*graph_idx].1,
+                    if schedule_entry.arrival != schedule_entry.departure {
+                        new_edge_nodes.push(Node(
+                            schedule_entry.departure.to_graph_length(unit_length),
+                            self.stations_draw_info[graph_index].1,
                         ));
                     }
-                    remaining.push((new_edge, *graph_idx));
+                    remaining_edges.push((new_edge_nodes, graph_index));
                 }
             }
             if !local_edges.is_empty() {
-                edges.extend(
-                    std::mem::take(&mut local_edges)
-                        .into_iter()
-                        .map(|(nodes, _)| nodes),
-                );
+                // Convert local edges to OutputEdge and add to output_edges
+                output_edges.extend(std::mem::take(&mut local_edges).into_iter().map(
+                    |(edge_nodes, _)| OutputEdge {
+                        edges: edge_nodes,
+                        labels: None,
+                    },
+                ));
             }
             // update local_edges with remaining
-            local_edges = remaining;
+            local_edges = remaining_edges;
         }
         // handle the remaining local edges
-        edges.extend(local_edges.into_iter().map(|(nodes, _)| nodes));
+        output_edges.extend(local_edges.into_iter().map(|(edge_nodes, _)| OutputEdge {
+            edges: edge_nodes,
+            labels: None,
+        }));
 
         // Filter out edges with less than 2 nodes before processing labels
-        edges.retain(|edge| edge.len() >= 2);
+        output_edges.retain(|output_edge| output_edge.edges.len() >= 2);
 
         // iterate over all edges and add collision nodes
         let (label_width, label_height) = train.label_size;
-        for edge in &mut edges {
-            self.add_train_labels_to_edge(edge, label_width, label_height)?;
+        for output_edge in &mut output_edges {
+            let (start_label_node, end_label_node) =
+                self.add_train_labels_to_edge(&mut output_edge.edges, label_width, label_height)?;
+            output_edge.labels = Some(OutputLabel {
+                start: start_label_node,
+                end: end_label_node,
+            })
         }
 
-        Ok(OutputTrain { edges })
+        Ok(OutputTrain {
+            edges: output_edges,
+            name: train.name.clone(),
+        })
     }
 
     fn create_label_polygon(
@@ -275,7 +294,7 @@ impl Output {
         label_width: GraphLength,
         label_height: GraphLength,
         direction: &LabelPosition,
-    ) -> (Vec<Node>, f64) {
+    ) -> (Vec<Node>, f64, f64) {
         match direction {
             LabelPosition::Beg(dir) => {
                 let polygon = vec![
@@ -289,10 +308,12 @@ impl Output {
                     LabelDirection::Up => (
                         rotate_polygon(polygon, anchor, -self.config.label_angle),
                         90.0f64.to_radians(),
+                        -self.config.label_angle,
                     ),
                     _ => (
                         rotate_polygon(polygon, anchor, self.config.label_angle),
                         -90.0f64.to_radians(),
+                        self.config.label_angle,
                     ),
                 }
             }
@@ -307,10 +328,12 @@ impl Output {
                     LabelDirection::Up => (
                         rotate_polygon(polygon, anchor, -self.config.label_angle),
                         -90.0f64.to_radians(),
+                        -self.config.label_angle,
                     ),
                     _ => (
                         rotate_polygon(polygon, anchor, self.config.label_angle),
                         90.0f64.to_radians(),
+                        self.config.label_angle,
                     ),
                 }
             }
@@ -322,7 +345,7 @@ impl Output {
         edge: &mut Vec<Node>,
         label_width: GraphLength,
         label_height: GraphLength,
-    ) -> Result<()> {
+    ) -> Result<((Node, f64), (Node, f64))> {
         let edge_start = *edge.first().unwrap();
         let edge_end = *edge.last().unwrap();
 
@@ -346,7 +369,13 @@ impl Output {
         };
 
         // Add label at the beginning of the edge
-        self.add_label_to_edge(edge, edge_start, label_width, label_height, &start_label_direction)?;
+        let start_label_node = self.add_label_to_edge(
+            edge,
+            edge_start,
+            label_width,
+            label_height,
+            &start_label_direction,
+        )?;
 
         // Add label at the end of the edge (only if edge has more than one node)
 
@@ -374,9 +403,15 @@ impl Output {
         };
 
         // Insert at the end
-        self.add_label_to_edge(edge, edge_end, label_width, label_height, &end_label_direction)?;
+        let end_label_node = self.add_label_to_edge(
+            edge,
+            edge_end,
+            label_width,
+            label_height,
+            &end_label_direction,
+        )?;
 
-        Ok(())
+        Ok((start_label_node, end_label_node))
     }
 
     fn add_label_to_edge(
@@ -386,8 +421,8 @@ impl Output {
         label_width: GraphLength,
         label_height: GraphLength,
         label_direction: &LabelPosition,
-    ) -> Result<()> {
-        let (polygon, movement_angle) =
+    ) -> Result<(Node, f64)> {
+        let (polygon, movement_angle, label_angle) =
             self.create_label_polygon(anchor_point, label_width, label_height, label_direction);
 
         let (resolved_polygon, _) = self
@@ -406,6 +441,6 @@ impl Output {
             }
         }
 
-        Ok(())
+        Ok((resolved_polygon[0], label_angle))
     }
 }

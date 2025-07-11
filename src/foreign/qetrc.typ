@@ -125,12 +125,14 @@
         departure: departure,
       ))
     }
-    let label = measure(name)
+    let placed_label = pad(.1em, name)
+    let label = measure(placed_label)
     trains.insert(
       name,
       (
         label_size: (label.width / 1pt, label.height / 1pt),
         schedule: schedule,
+        placed_label: placed_label,
       ),
     )
   }

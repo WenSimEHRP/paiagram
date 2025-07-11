@@ -113,7 +113,7 @@ impl TryFrom<NetworkHelper> for Network {
             trains.insert(
                 train_id,
                 Train {
-                    // name: train_name,
+                    name: train_name,
                     label_size,
                     schedule,
                     // schedule_index,
@@ -146,7 +146,7 @@ struct StationHelper {
 }
 
 pub struct Train {
-    // pub name: String,
+    pub name: String,
     pub label_size: (GraphLength, GraphLength),
     pub schedule: Vec<ScheduleEntry>,
     // pub schedule_index: MultiMap<StationID, usize>,
