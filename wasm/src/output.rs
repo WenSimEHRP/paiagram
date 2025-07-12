@@ -57,9 +57,9 @@ impl Output {
         Self {
             collision_manager,
             trains: Vec::new(),
-            graph_intervals: Vec::new(),
-            stations_draw_info: Vec::new(),
-            station_indices: MultiMap::new(),
+            stations_draw_info: Vec::with_capacity(config.stations_to_draw.len()),
+            station_indices: MultiMap::with_capacity(config.stations_to_draw.len()),
+            graph_intervals: Vec::with_capacity(config.stations_to_draw.len().saturating_sub(1)),
             config,
         }
     }
@@ -87,7 +87,7 @@ impl Output {
                 .map_or(0.0, |(_, y, _)| y.value()),
         ));
 
-        self.trains = Vec::with_capacity(train_ids_to_draw.len());
+        self.trains.reserve(train_ids_to_draw.len());
         for train_id in train_ids_to_draw {
             let output_train = self.make_train(network.trains.get(&train_id).unwrap())?;
             self.trains.push(output_train);
@@ -121,10 +121,6 @@ impl Output {
             .copied()
             .collect();
 
-        self.stations_draw_info = Vec::with_capacity(self.config.stations_to_draw.len());
-        self.station_indices = MultiMap::with_capacity(self.config.stations_to_draw.len());
-        self.graph_intervals =
-            Vec::with_capacity(self.config.stations_to_draw.len().saturating_sub(1));
         let mut position: GraphLength = 0.0.into();
 
         let unit_length = self.config.unit_length * self.config.position_axis_scale;
@@ -236,7 +232,6 @@ impl Output {
                     .position(|(_, last_graph_index)| graph_index.abs_diff(*last_graph_index) == 1)
                 {
                     let (mut matched_edge_nodes, _) = local_edges.swap_remove(edge_position);
-                    // add nodes to remaining
                     matched_edge_nodes.push(Node(edge_start, edge_height));
                     if schedule_entry.arrival != schedule_entry.departure {
                         matched_edge_nodes.push(Node(edge_end, edge_height));
