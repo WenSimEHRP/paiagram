@@ -6,6 +6,7 @@ mod input;
 mod output;
 mod types;
 mod collision;
+mod utils;
 use input::{Network, NetworkConfig};
 use output::Output;
 

@@ -18,13 +18,13 @@ impl IntervalIDExt for IntervalID {
 
 /// Time representation in seconds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Add, Sub, Deserialize)]
-pub struct Time(u32);
+pub struct Time(i32);
 
 impl Time {
     // pub fn new(seconds: u32) -> Self {
     //     Time(seconds)
     // }
-    pub fn seconds(&self) -> u32 {
+    pub fn seconds(&self) -> i32 {
         self.0
     }
     // pub fn second(&self) -> u32 {
@@ -42,6 +42,12 @@ impl Time {
     // pub fn hour(&self) -> u32 {
     //     (self.0 / 3600) % 24
     // }
+    pub fn yesterday(self) -> Self {
+        Time(self.0 - 86400)
+    }
+    pub fn tomorrow(self) -> Self {
+        Time(self.0 + 86400)
+    }
     pub fn to_graph_length(self, unit_length: GraphLength) -> GraphLength {
         let hours = self.0 as f64 / 3600.0;
         unit_length * hours

@@ -96,6 +96,28 @@
   (stations, trains, routings)
 }
 
+#let match-name-color(name) = {
+  let name = upper(name)
+  let (c1, c2, c3) = if name.starts-with("G") {
+    (purple, white, [高])
+  } else if name.starts-with("D") {
+    (orange, white, [动])
+  } else if name.starts-with("C") {
+    (blue, white, [城])
+  } else if name.starts-with("K") {
+    (red, white, [快])
+  } else if name.starts-with("T") {
+    (purple, white, [特])
+  } else if name.starts-with("Z") {
+    (blue, white, [直])
+  } else if name.starts-with("L") {
+    (gray, white, [临])
+  } else {
+    (green, white, [普])
+  }
+  block(stroke: 1pt, fill: c1, radius: .1em, pad(.1em, text(size: .6em, weight: 800, fill: c2)[#c3]))
+}
+
 #let read-qetrc-2(qetrc) = {
   let stations = (:)
   let trains = (:)
@@ -104,13 +126,13 @@
   for i in range(available_stations.len() - 1) {
     let beg = available_stations.at(i)
     let end = available_stations.at(i + 1)
-    let label = measure(pad(.15em, beg.zhanming))
+    let label = measure(beg.zhanming)
     stations.insert(beg.zhanming, (label_size: (label.width / 1pt, label.height / 1pt)))
     intervals.push(((beg.zhanming, end.zhanming), (length: int(end.licheng - beg.licheng) * 1000)))
   }
   // handle the last station
   let last_station = available_stations.at(available_stations.len() - 1)
-  let last-label = measure(pad(.15em, last_station.zhanming))
+  let last-label = measure(last_station.zhanming)
   stations.insert(last_station.zhanming, (label_size: (last-label.width / 1pt, last-label.height / 1pt)))
   for train in qetrc.at("trains") {
     let name = train.at("checi").at(0)
@@ -125,7 +147,17 @@
         departure: departure,
       ))
     }
-    let placed_label = pad(.1em, name)
+    let placed_label = pad(
+      .1em,
+      grid(
+        columns: 2,
+        rows: 1em,
+        align: center + horizon,
+        gutter: .1em,
+        match-name-color(name),
+        [#name],
+      ),
+    )
     let label = measure(placed_label)
     trains.insert(
       name,

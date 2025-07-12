@@ -1,7 +1,7 @@
 #let plg = plugin("paiagram_wasm.wasm")
 #import "foreign/qetrc.typ": read-qetrc-2
 #set page(height: auto, width: auto)
-#set text(font: "Sarasa Mono SC")
+#set text(font: "Sarasa Mono SC", top-edge: "bounds", bottom-edge: "bounds")
 
 #context [
   #let trains = (
@@ -229,7 +229,7 @@
               place(
                 dx: start_anchor.at(0) * 1pt,
                 dy: start_anchor.at(1) * 1pt,
-                rotate(origin: top + left, start_angle * 1rad, reflow: true, place(placed_label)),
+                rotate(origin: top + left, start_angle * 1rad, placed_label),
               ),
             )
             let (end_anchor, end_angle) = edge.labels.end
@@ -237,7 +237,7 @@
               place(
                 dx: end_anchor.at(0) * 1pt,
                 dy: end_anchor.at(1) * 1pt,
-                rotate(origin: top + left, end_angle * 1rad, reflow: true, place(placed_label)),
+                rotate(origin: top + left, end_angle * 1rad, placed_label),
               ),
             )
           }
