@@ -17,7 +17,7 @@ impl IntervalIDExt for IntervalID {
 }
 
 /// Time representation in seconds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Add, Sub, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Add, Sub, Deserialize, Ord, PartialOrd)]
 pub struct Time(i32);
 
 impl Time {

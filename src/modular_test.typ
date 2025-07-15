@@ -82,7 +82,7 @@
     trains,
     intervals,
   ) = read-qetrc(
-    json("../jinghu.pyetgr"),
+    json("../jingguang.pyetgr"),
     train-stroke: train => {
       import "@preview/digestify:0.1.0": *
       let a = calc.rem(int.from-bytes(md5(bytes(train.name)).slice(0, 4)), 360)
@@ -92,15 +92,21 @@
       pad(
         .1em,
         grid(
-          columns: 2,
+          columns: 1,
           rows: auto,
           align: center + horizon,
           gutter: .1em,
-          match-name-color(train.name), [#train.name],
-          grid.cell(
-            colspan: 2,
-            text(size: .7em, weight: 600)[#(train.raw.sfz)--#(train.raw.zdz)],
+          grid(
+            gutter: .1em,
+            columns: 2,
+            box(height: .8em, width: 1em, image("../China_Railways.svg")),
+            text(
+              top-edge: "cap-height",
+              bottom-edge: "baseline",
+            )[#train.name],
           ),
+
+          text(size: .5em, weight: 800, scale(x: 70%, reflow: true)[#(train.raw.sfz)---#(train.raw.zdz)]),
         ),
       )
     },
@@ -119,14 +125,14 @@
       )),
       cbor.encode((
         stations_to_draw: stations-to-draw,
-        beg: 0,
-        end: 24 * 60 * 60,
+        start_time: 0,
+        end_time: 24 * 60 * 60,
         unit_length: 1cm / 1pt,
         position_axis_scale_mode: "Logarithmic",
         time_axis_scale_mode: "Linear",
-        position_axis_scale: 1.0,
-        time_axis_scale: 10.0,
-        label_angle: 10deg.rad(),
+        position_axis_scale: 1.5,
+        time_axis_scale: 6.0,
+        label_angle: 85deg.rad(),
         line_stack_space: 2pt / 1pt,
       )),
     ),
@@ -143,7 +149,7 @@
   }
 
   #let pt((x, y)) = (x * 1pt, y * 1pt)
-  #let debug = false
+  #let debug = true
 
   #box(
     stroke: if debug { blue },
@@ -206,7 +212,7 @@
                   top + left,
                   place(
                     horizon + right,
-                    dx: -5pt,
+                    dx: -3pt,
                     it,
                   ),
                 ))
@@ -216,7 +222,7 @@
         ),
       )
 
-      {
+      place-curve({
         for train in a.trains {
           for edge in train.edges {
             let (first, ..rest) = edge.edges
@@ -225,7 +231,7 @@
               curve.move(pt(first)),
               ..rest.map(it => curve.line(pt(it))),
             )
-            place-curve(
+            place(
               curve(
                 stroke: stroke(
                   paint: white,
@@ -236,7 +242,7 @@
                 ..ops,
               ),
             )
-            place-curve(
+            place(
               curve(
                 stroke: stroke(
                   paint: trains.at(train.name).stroke,
@@ -249,23 +255,29 @@
 
             let (start_angle, end_angle) = edge.labels.angles
             let placed_label = trains.at(train.name).placed_label
-            place-curve(
-              place(
-                dx: first.at(0) * 1pt,
-                dy: first.at(1) * 1pt,
-                rotate(origin: top + left, start_angle * 1rad, place(bottom + left, placed_label)),
-              ),
+            place(
+              dx: first.at(0) * 1pt,
+              dy: first.at(1) * 1pt,
+              rotate(origin: top + left, start_angle * 1rad, place(bottom + left, placed_label)),
             )
-            place-curve(
-              place(
-                dx: last.at(0) * 1pt,
-                dy: last.at(1) * 1pt,
-                rotate(origin: top + left, end_angle * 1rad, place(bottom + right, placed_label)),
-              ),
+            place(
+              dx: last.at(0) * 1pt,
+              dy: last.at(1) * 1pt,
+              rotate(origin: top + left, end_angle * 1rad, place(bottom + right, placed_label)),
             )
+            if debug {
+              for (i, pt) in edge.edges.enumerate() {
+                place(
+                  center + horizon,
+                  dx: pt.at(0) * 1pt,
+                  dy: pt.at(1) * 1pt,
+                  text(size: .7em, weight: 600)[#i],
+                )
+              }
+            }
           }
         }
-      }
+      })
 
       if debug {
         for col in a.collision_manager.collisions {

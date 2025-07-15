@@ -487,9 +487,7 @@ impl LineCollisionManager {
             // Check if the segment overlaps with any existing segments
             for (&existing_start, &existing_end) in c.range(..=test_end) {
                 // Check if the segments overlap
-                if (existing_start <= test_end && existing_end >= test_start)
-                    || (test_start <= existing_end && test_end >= existing_start)
-                {
+                if existing_start <= test_end && existing_end >= test_start {
                     return true; // Collision detected
                 }
             }
@@ -524,8 +522,8 @@ impl LineCollisionManager {
             self.add_collision(start, end, idx as usize);
             return Ok(level);
         }
-        return Err(
+        Err(
             anyhow::anyhow! {"Reached maximum recursion depth ({max_depth}) when processing station line collisions"},
-        );
+        )
     }
 }

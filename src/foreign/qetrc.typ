@@ -27,8 +27,16 @@
 
 #let read-qetrc(
   qetrc,
-  train-label: (train) => { pad(bottom: .1em, train.name) },
-  train-stroke: (train) => { red },
+  train-label: train => {
+    pad(
+      bottom: .14em,
+      text(top-edge: "cap-height", bottom-edge: "baseline")[
+        #place(center + horizon, text(stroke: .1em + white)[#train.name])
+        #train.name
+      ],
+    )
+  },
+  train-stroke: train => { red },
 ) = {
   let stations = (:)
   let trains = (:)

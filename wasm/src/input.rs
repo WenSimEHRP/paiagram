@@ -190,8 +190,8 @@ struct IntervalHelper {
 #[serde(try_from = "NetworkConfigHelper")]
 pub struct NetworkConfig {
     pub stations_to_draw: Vec<StationID>,
-    pub beg: Time,
-    pub end: Time,
+    pub start_time: Time,
+    pub end_time: Time,
     pub unit_length: GraphLength,
     pub position_axis_scale_mode: ScaleMode,
     // pub time_axis_scale_mode: ScaleMode,
@@ -204,8 +204,8 @@ pub struct NetworkConfig {
 #[derive(Deserialize)]
 struct NetworkConfigHelper {
     stations_to_draw: Vec<String>,
-    beg: Time,
-    end: Time,
+    start_time: Time,
+    end_time: Time,
     unit_length: GraphLength,
     position_axis_scale_mode: ScaleMode,
     // time_axis_scale_mode: ScaleMode,
@@ -251,7 +251,7 @@ impl TryFrom<NetworkConfigHelper> for NetworkConfig {
             }
         }
 
-        if helper.beg.seconds() > helper.end.seconds() {
+        if helper.start_time.seconds() > helper.end_time.seconds() {
             return Err(anyhow::anyhow!(
                 "The beginning time cannot be after the end time"
             ));
@@ -259,8 +259,8 @@ impl TryFrom<NetworkConfigHelper> for NetworkConfig {
 
         Ok(NetworkConfig {
             stations_to_draw,
-            beg: helper.beg,
-            end: helper.end,
+            start_time: helper.start_time,
+            end_time: helper.end_time,
             unit_length: helper.unit_length,
             position_axis_scale_mode: helper.position_axis_scale_mode,
             line_stack_space: helper.line_stack_space,

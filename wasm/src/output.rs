@@ -1,7 +1,6 @@
 use crate::collision::*;
 use crate::input::*;
 use crate::types::*;
-use crate::utils::*;
 use anyhow::{Result, anyhow};
 use multimap::MultiMap;
 use serde::Serialize;
@@ -42,7 +41,7 @@ pub struct Output {
     trains: Vec<OutputTrain>,
     graph_intervals: Vec<GraphLength>,
     #[serde(skip)]
-    stations_draw_info: Vec<(StationID, GraphLength, LineCollisionManager)>,
+    station_draw_info: Vec<(StationID, GraphLength, LineCollisionManager)>,
     #[serde(skip)]
     station_indices: MultiMap<StationID, usize>,
     #[serde(skip)]
@@ -56,7 +55,7 @@ impl Output {
         Self {
             collision_manager,
             trains: Vec::new(),
-            stations_draw_info: Vec::with_capacity(config.stations_to_draw.len()),
+            station_draw_info: Vec::with_capacity(config.stations_to_draw.len()),
             station_indices: MultiMap::with_capacity(config.stations_to_draw.len()),
             graph_intervals: Vec::with_capacity(config.stations_to_draw.len().saturating_sub(1)),
             config,
@@ -70,18 +69,24 @@ impl Output {
         let time_unit_length = self.config.unit_length * self.config.time_axis_scale;
 
         self.collision_manager.update_x_min(GraphLength::from(
-            self.config.beg.to_graph_length(time_unit_length).value(),
+            self.config
+                .start_time
+                .to_graph_length(time_unit_length)
+                .value(),
         ));
         self.collision_manager.update_x_max(GraphLength::from(
-            self.config.end.to_graph_length(time_unit_length).value(),
+            self.config
+                .end_time
+                .to_graph_length(time_unit_length)
+                .value(),
         ));
         self.collision_manager.update_y_min(GraphLength::from(
-            self.stations_draw_info
+            self.station_draw_info
                 .first()
                 .map_or(0.0, |(_, y, _)| y.value()),
         ));
         self.collision_manager.update_y_max(GraphLength::from(
-            self.stations_draw_info
+            self.station_draw_info
                 .last()
                 .map_or(0.0, |(_, y, _)| y.value()),
         ));
@@ -123,14 +128,11 @@ impl Output {
         let mut position: GraphLength = 0.0.into();
 
         let unit_length = self.config.unit_length * self.config.position_axis_scale;
-        let label_start = self
-            .config
-            .beg
-            .to_graph_length(self.config.unit_length * self.config.time_axis_scale);
+        let label_start = GraphLength::from(0.0f64);
 
         // process the first station
         let first_station = self.config.stations_to_draw[0];
-        self.stations_draw_info
+        self.station_draw_info
             .push((first_station, position, LineCollisionManager::new()));
         self.station_indices.insert(first_station, 0);
         // handle the first station label
@@ -176,7 +178,7 @@ impl Output {
 
             self.graph_intervals.push(interval_length);
             position += interval_length;
-            self.stations_draw_info
+            self.station_draw_info
                 .push((*end_station, position, LineCollisionManager::new()));
             self.station_indices.insert(*end_station, window_idx + 1);
 
@@ -193,18 +195,74 @@ impl Output {
         Ok(train_ids)
     }
 
+    #[inline]
+    fn extend_global(
+        config: &NetworkConfig,
+        global: &mut Vec<OutputEdge>,
+        mut local: Vec<Node>,
+        start: GraphLength,
+        end: GraphLength,
+        base_line: &mut (StationID, GraphLength, LineCollisionManager),
+    ) -> Result<()> {
+        let (_, base_height, collision_manager) = base_line;
+        let edge_height: GraphLength = *base_height
+            + collision_manager.resolve_collisions(start, end)? as f64 * config.line_stack_space;
+        local.push(Node(start, edge_height));
+        local.push(Node(end, edge_height));
+        global.push(OutputEdge {
+            edges: local,
+            labels: None,
+        });
+        Ok(())
+    }
+
+    #[inline]
+    fn extend_local(
+        config: &NetworkConfig,
+        remaining: &mut Vec<(Vec<Node>, usize)>,
+        mut local: Vec<Node>,
+        start: GraphLength,
+        end: GraphLength,
+        base_line: &mut (StationID, GraphLength, LineCollisionManager),
+        index: usize,
+    ) -> Result<()> {
+        let (_, base_height, collision_manager) = base_line;
+        let edge_height: GraphLength = *base_height
+            + collision_manager.resolve_collisions(start, end)? as f64 * config.line_stack_space;
+        local.push(Node(start, edge_height));
+        local.push(Node(end, edge_height));
+        remaining.push((local, index));
+        Ok(())
+    }
+
+    /// Make edges and place labels for each train
     fn make_train(&mut self, train: &Train) -> Result<OutputTrain> {
         let schedule = &train.schedule;
+        // the GLOBAL edge group
         let mut output_edges: Vec<OutputEdge> = Vec::new();
+        // the LOCAL edge group containing all WIP edges. The second element in the tuple
+        // is the index to station_draw_info, which holds all station lines.
         let mut local_edges: Vec<(Vec<Node>, usize)> = Vec::new();
         let unit_length = self.config.unit_length * self.config.time_axis_scale;
+        let map_end = (self.config.end_time - self.config.start_time).to_graph_length(unit_length);
+        let map_start = GraphLength::from(0.0f64);
 
-        for schedule_entry in schedule {
-            let Some(graph_indices) = self.station_indices.get_vec(&schedule_entry.station) else {
+        let mut previous_indices: Option<&Vec<usize>> = self
+            .station_indices
+            .get_vec(&schedule.first().unwrap().station);
+        for schedule_idx in 0..schedule.len() {
+            // the current schedule entry
+            let ce: &ScheduleEntry = schedule.get(schedule_idx).unwrap();
+            // the last station entry does not have a next entry
+            let ne: Option<&ScheduleEntry> = schedule.get(schedule_idx + 1);
+            let Some(current_indices) = previous_indices else {
+                if schedule_idx < schedule.len() - 1 {
+                    let ne = &schedule[schedule_idx + 1];
+                    previous_indices = self.station_indices.get_vec(&ne.station);
+                }
                 if local_edges.is_empty() {
                     continue;
                 }
-                // Convert local edges to OutputEdge and add to output_edges
                 output_edges.extend(std::mem::take(&mut local_edges).into_iter().map(
                     |(edge_nodes, _)| OutputEdge {
                         edges: edge_nodes,
@@ -213,41 +271,202 @@ impl Output {
                 ));
                 continue;
             };
+            let edge_start = (ce.arrival - self.config.start_time).to_graph_length(unit_length);
+            let edge_end = (ce.departure - self.config.start_time).to_graph_length(unit_length);
             let mut remaining_edges: Vec<(Vec<Node>, usize)> = Vec::new();
-            for &graph_index in graph_indices {
-                let edge_start = schedule_entry.arrival.to_graph_length(unit_length);
-                let edge_end = schedule_entry.departure.to_graph_length(unit_length);
-                let edge_height = self.stations_draw_info[graph_index].1
-                    + if schedule_entry.arrival != schedule_entry.departure {
-                        self.stations_draw_info[graph_index]
-                            .2
-                            .resolve_collisions(edge_start, edge_end)?
-                            as f64
-                            * self.config.line_stack_space
-                    } else {
-                        0.0.into()
-                    };
-                if let Some(edge_position) = local_edges
+            for &graph_index in current_indices {
+                let mut remaining_edge: Option<(Vec<Node>, usize)> = None;
+                let current_line = &mut self.station_draw_info[graph_index];
+                if let Some(local_index) = local_edges
                     .iter()
-                    .position(|(_, last_graph_index)| graph_index.abs_diff(*last_graph_index) == 1)
+                    .position(|(_, idx)| graph_index.abs_diff(*idx) == 1)
                 {
-                    let (mut matched_edge_nodes, _) = local_edges.swap_remove(edge_position);
-                    matched_edge_nodes.push(Node(edge_start, edge_height));
-                    if schedule_entry.arrival != schedule_entry.departure {
-                        matched_edge_nodes.push(Node(edge_end, edge_height));
+                    // in this case the start MUST be inside the map
+                    let (mut matched_edge, _) = local_edges.swap_remove(local_index);
+                    if ce.arrival == ce.departure {
+                        // simply push a point and continue
+                        matched_edge.push(Node(edge_start, current_line.1));
+                        remaining_edges.push((matched_edge, graph_index));
+                    } else if ce.departure < self.config.start_time
+                        || ce.departure > self.config.end_time
+                        || ce.departure < ce.arrival
+                    {
+                        // the edge extends beyond the map
+                        Self::extend_global(
+                            &self.config,
+                            &mut output_edges,
+                            matched_edge,
+                            edge_start,
+                            map_end,
+                            current_line,
+                        )?;
+                        if ce.departure < ce.arrival {
+                            // the edge extends beyond the map, and ends before the current arrival
+                            Self::extend_local(
+                                &self.config,
+                                &mut remaining_edges,
+                                Vec::with_capacity(2),
+                                edge_start,
+                                edge_end,
+                                current_line,
+                                graph_index,
+                            )?;
+                        }
+                    } else {
+                        // the edge does not extend beyond the map, and ends after the current arrival
+                        Self::extend_local(
+                            &self.config,
+                            &mut remaining_edges,
+                            matched_edge,
+                            edge_start,
+                            edge_end,
+                            current_line,
+                            graph_index,
+                        )?;
                     }
-                    remaining_edges.push((matched_edge_nodes, graph_index));
                 } else {
-                    // start a new edge, if not found
-                    let mut new_edge_nodes = vec![Node(edge_start, edge_height)];
-                    if schedule_entry.arrival != schedule_entry.departure {
-                        new_edge_nodes.push(Node(edge_end, edge_height));
+                    // the edge is not found. Create a new one
+                    if ce.arrival < self.config.start_time {
+                        if ce.departure < self.config.start_time {
+                            // do nothing
+                        } else if ce.departure < self.config.end_time {
+                            Self::extend_local(
+                                &self.config,
+                                &mut remaining_edges,
+                                Vec::with_capacity(2),
+                                map_start,
+                                edge_end,
+                                current_line,
+                                graph_index,
+                            )?;
+                        } else {
+                            Self::extend_global(
+                                &self.config,
+                                &mut output_edges,
+                                Vec::with_capacity(2),
+                                map_start,
+                                map_end,
+                                current_line,
+                            )?;
+                        }
+                    } else if ce.arrival < self.config.end_time {
+                        if ce.arrival == ce.departure {
+                            // simply push a point and continue
+                            remaining_edges
+                                .push((vec![Node(edge_start, current_line.1)], graph_index));
+                        } else if ce.departure < self.config.start_time
+                            || ce.departure > self.config.end_time
+                            || ce.departure < ce.arrival
+                        {
+                            // the edge extends beyond the map
+                            Self::extend_global(
+                                &self.config,
+                                &mut output_edges,
+                                Vec::with_capacity(2),
+                                edge_start,
+                                map_end,
+                                current_line,
+                            )?;
+                            if ce.departure < ce.arrival {
+                                // the edge extends beyond the map, and ends before the current arrival
+                                Self::extend_local(
+                                    &self.config,
+                                    &mut remaining_edges,
+                                    Vec::with_capacity(2),
+                                    edge_start,
+                                    edge_end,
+                                    current_line,
+                                    graph_index,
+                                )?;
+                            }
+                        } else {
+                            // the edge does not extend beyond the map, and ends after the current arrival
+                            Self::extend_local(
+                                &self.config,
+                                &mut remaining_edges,
+                                Vec::with_capacity(2),
+                                edge_start,
+                                edge_end,
+                                current_line,
+                                graph_index,
+                            )?;
+                        }
+                    } else {
+                        // arrival is after the end of the map
+                        if ce.departure < self.config.start_time {
+                            // do nothing
+                        } else if ce.departure < self.config.end_time {
+                            Self::extend_local(
+                                &self.config,
+                                &mut remaining_edges,
+                                Vec::with_capacity(2),
+                                map_start,
+                                edge_end,
+                                current_line,
+                                graph_index,
+                            )?;
+                        } else {
+                            Self::extend_global(
+                                &self.config,
+                                &mut output_edges,
+                                Vec::with_capacity(2),
+                                map_start,
+                                map_end,
+                                current_line,
+                            )?;
+                        }
                     }
-                    remaining_edges.push((new_edge_nodes, graph_index));
                 }
+                /*
+                // The same station cannot appear twice in a row, neither can they appear
+                // with only one station in between. This means that for this specific entry,
+                // there can only be one adjacent next station on the graph.
+                // This limitation is what makes the following code work.
+
+                // query the next station's position
+                // there might be an index out of bounds error here, so use the safe method
+
+                let Some(ne) = ne else {
+                    // there isn't a next station
+                    continue;
+                };
+
+                if
+                // there are nothing added
+                previous_remaining_edge_count == remaining_edges.len()
+                    // the next edge is outside the map
+                    && (ne.arrival < self.config.start_time || ne.arrival > self.config.end_time)
+                    // and it does not require spamming across the whole map
+                    && !(ce.departure < self.config.start_time && ne.arrival > self.config.end_time)
+                {
+                    continue;
+                }
+
+                let Some((next_line, compare_result)) = (graph_index.saturating_sub(1)
+                    ..=graph_index.saturating_add(1))
+                    .find_map(|idx| {
+                        let base_line = self.station_draw_info.get(idx)?;
+                        if base_line.0 == ne.station {
+                            Some((base_line, graph_index.cmp(&idx)))
+                        } else {
+                            None
+                        }
+                    })
+                else {
+                    continue;
+                };
+                if ce.departure < self.config.start_time {
+
+                } else if ce.departure < ne.arrival {
+
+                } else if ce.departure < self.config.end_time {
+
+                } else {
+
+                }
+                */
             }
             if !local_edges.is_empty() {
-                // Convert local edges to OutputEdge and add to output_edges
                 output_edges.extend(std::mem::take(&mut local_edges).into_iter().map(
                     |(edge_nodes, _)| OutputEdge {
                         edges: edge_nodes,
@@ -255,8 +474,10 @@ impl Output {
                     },
                 ));
             }
-            // update local_edges with remaining
             local_edges = remaining_edges;
+            if let Some(ne) = ne {
+                previous_indices = self.station_indices.get_vec(&ne.station)
+            };
         }
         // handle the remaining local edges
         output_edges.extend(local_edges.into_iter().map(|(edge_nodes, _)| OutputEdge {
