@@ -1,8 +1,0 @@
-[package]
-name = "paiagram"
-version = "0.1.0"
-authors = ["Jeremy Gao"]
-license = "MIT"
-entrypoint = "src/lib.typ"
-description = "Draw transportation timetable diagrams"
-repository = "https://github.com/wensimehrp/paiagram"

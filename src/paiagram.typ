@@ -1,248 +1,193 @@
-#import "elem/mod.typ" as elem
-#import "utils.typ": *
+#let plg = plugin("paiagram_wasm.wasm")
+#let pt((x, y)) = (x * 1pt, y * 1pt)
 
-/// Draws a train timetable diagram
-///
-/// ```example
-/// #import "@local/paiagram:0.1.0": paiagram
-/// #paiagram(
-///   beg: 6 * 3600,
-///   end: 9 * 3600,
-///   track-scale: .5,
-///   track-space-scale: 3,
-///   stations: (
-///     "a": (position: 0, tracks: 1, name: "Station A"),
-///     "b": (position: 1, tracks: 2, name: "Station B"),
-///   ),
-///   trains: (
-///     "Arupha": (
-///       schedule: (
-///    (arrival_time: 6 * 3600, station: "a", track_index: 0),
-///    (arrival_time: 7 * 3600, station: "b", track_index: 0),
-///       )
-///     ),
-///     "Aleph": (
-///       schedule: (
-///    (arrival_time: 7 * 3600, station: "a", track_index: 0),
-///    (arrival_time: 8 * 3600, station: "b", track_index: 0),
-///       )
-///     ),
-///     "Shuke": (
-///       schedule: (
-///    (arrival_time: 7 * 3600, station: "b", track_index: 1),
-///    (arrival_time: 8 * 3600, station: "a", track_index: 0),
-///       )
-///     ),
-///     "Beita": (
-///       schedule: (
-///    (arrival_time: 7.5 * 3600, departure_time: 8 * 3600, station: "b", track_index: 1),
-///    (arrival_time: 9 * 3600, station: "a", track_index: 0),
-///       )
-///     )
-///   )
-/// )
-/// ```
-///
-/// -> content
 #let paiagram(
-  // basic information
-  /// Stations to draw
-  /// -> dictionary
-  stations: (:),
-  /// Trains to draw
-  /// -> dictionary
   trains: (:),
-  /// Routings to draw
-  /// -> dictionary
-  routings: (:),
-  // station tracks
-  /// Set the distance scale between tracks on the diagram.
-  /// Setting it to `auto` will automatically calculate the distance based on the
-  /// text size. Setting it to `none`  or `0` will remove the track space.
-  /// -> auto | int | float | none
-  track-scale: auto,
-  /// Set the distance scale between stations on the diagram.
-  /// ```example
-  /// #import "@local/paiagram:0.1.0": paiagram
-  /// #paiagram(
-  ///   beg: 6 * 3600,
-  ///   end: 9 * 3600,
-  ///   stations: (
-  ///     "a": (position: 0),
-  ///     "b": (position: 1),
-  ///   )
-  /// )
-  /// ```
-  /// ```example
-  /// #import "@local/paiagram:0.1.0": paiagram
-  /// #paiagram(
-  ///   beg: 6 * 3600,
-  ///   end: 9 * 3600,
-  ///   track-space-scale: 4.2,
-  ///   stations: (
-  ///     "a": (position: 0),
-  ///     "b": (position: 1),
-  ///   )
-  /// )
-  /// ```
-  /// -> int | float
-  track-space-scale: 1,
-  /// How to scale the track space.
-  /// Possible values are:
-  /// - `"linear"`: The track space is scaled linearly.
-  /// - `"uniform"`: Each track space are the same size.
-  /// - `"Logarithmic"`: The track space is scaled logarithmically.
-  /// - `"sqrt"`: The track space is scaled by the square root.
-  /// -> string
-  track-space-scale-mode: "linear",
-  /// The track space stroke.
-  /// -> none | auto | length | color | gradient | stroke | tiling | dictionary
-  track-stroke: stroke(thickness: 1pt, dash: "dashed", paint: gray, cap: "round"),
-  /// Numbering scheme for the tracks.
-  /// -> string
-  track-numbering: "1",
-  /// How to stroke the diagram border.
-  /// -> none | auto | length | color | gradient | stroke | tiling | dictionary
-  stroke: 1pt + gray,
-  /// Beginning time of the diagram, in seconds.
-  /// -> int
-  beg: 0,
-  /// End time of the diagram, in seconds.
-  /// -> int
-  end: 24 * 3600,
-  /// How to fill the diagram.
-  /// -> none | color | gradient | tiling
-  fill: none,
-  /// Whether to draw the diagram reversed.
-  /// -> bool
-  reversed: false,
-  /// Train coloring mode.
-  /// When set to `auto`, the train will be colored based on the train name.
-  /// When set to `none`, all trains will be colored grey.
-  /// When set to `"default"`, the trains will be colored based on its stroke settings.
-  /// -> none | auto | length | color | gradient | stroke | tiling | dictionary | array
-  train-coloring: auto,
-  /// Length unit for the diagram.
-  /// Possible values are:
-  /// - `"km"`: kilometers
-  /// - `"mi"`: miles
-  ///  - `"time`: hours
-  /// -> string
-  length-unit: "km",
-  /// unit length for the diagram.
-  /// -> length
+  stations: (:),
+  intervals: (:),
+  stations-to-draw: (),
+  start-hour: 0,
+  end-hour: 24,
   unit-length: 1cm,
-  /// Horizontal scale for the diagram.
-  /// -> int | float
-  horizontal-scale: 2,
-  /// Whether to draw the diagram in debug mode.
-  /// -> bool
+  position-axis-scale-mode: "Logarithmic",
+  position-axis-scale: 1.5,
+  time-axis-scale: 6.0,
+  label-angle: 10deg,
+  line-stack-space: 2pt,
   debug: false,
-  /// Whether to show the train labels.
-  /// -> bool
-  show-label: true,
-) = context {
-  let track-scale = track-scale
-  if track-scale == auto {
-    track-scale = 1em.to-absolute() / unit-length
-  } else if track-scale == none {
-    track-scale = 0
-  }
-  // simple checks
-  let collision = ()
-  // elements to render
-  let (stations, max-height) = elem.stations.make-stations(
-    stations,
-    track-scale,
-    track-space-scale,
-    track-space-scale-mode,
-    debug: false,
+) = {
+  assert(
+    start-hour >= 0 and start-hour < 24,
+    message: "The time range must be within 0 to 24 hours.",
   )
-  let (stat-elem, collision) = elem.stations.draw-stations(
-    collision,
-    stations,
-    beg,
-    end,
-    unit-length,
-    horizontal-scale,
-    track-scale,
-    track-stroke,
-    track-numbering,
+  let hours = end-hour - start-hour
+  let a = cbor(
+    plg.process(
+      cbor.encode((
+        stations: stations,
+        trains: trains,
+        intervals: intervals,
+      )),
+      cbor.encode((
+        stations_to_draw: stations-to-draw,
+        start_time: int(start-hour) * 60 * 60,
+        end_time: int(end-hour) * 60 * 60,
+        unit_length: unit-length / 1pt,
+        position_axis_scale_mode: position-axis-scale-mode,
+        position_axis_scale: float(position-axis-scale),
+        time_axis_scale: float(time-axis-scale),
+        label_angle: label-angle.rad(),
+        line_stack_space: line-stack-space / 1pt,
+      )),
+    ),
   )
-  let (dia-elem, collision) = elem.diagram.draw-diagram(
-    collision,
-    beg,
-    end,
-    unit-length,
-    horizontal-scale,
-    stroke,
-    max-height,
-  )
-  let (train-elem, collision) = elem.trains.make-trains(
-    collision,
-    trains,
-    stations,
-    beg,
-    end,
-    track-scale,
-    unit-length,
-    horizontal-scale,
-    train-coloring,
-    show-label,
-    debug: debug,
-  )
-  let elements = {
-    for e in stat-elem { e }
-    for e in dia-elem { e }
-    for e in train-elem { e }
-    if debug {
-      for col in collision {
-        place(
-          curve(
-            fill: blue.transparentize(50%),
-            stroke: blue + 1pt,
-            curve.move((col.x.beg, col.y.beg)),
-            curve.line((col.x.end, col.y.beg)),
-            curve.line((col.x.end, col.y.end)),
-            curve.line((col.x.beg, col.y.end)),
-            curve.close(),
-          ),
-        )
-        place(
-          curve(
-            stroke: (paint: blue, cap: "butt", join: "bevel"),
-            curve.move((col.x.beg, col.y.beg)),
-            curve.line((col.x.end, col.y.end)),
-            curve.line((col.x.end, col.y.beg)),
-            curve.line((col.x.beg, col.y.end)),
-          ),
-        )
-        place(
-          dx: col.x.beg - 2pt,
-          dy: col.y.beg - 2pt,
-          circle(
-            stroke: none,
-            fill: blue,
-            radius: 2pt,
-          )
-        )
-      }
-    }
-  }
-  let xbeg = 0pt
-  let ybeg = 0pt
-  let xend = 0pt
-  let yend = 0pt
-  for col in collision {
-    xbeg = calc.min(col.x.beg, xbeg)
-    xend = calc.max(col.x.end, xend)
-    ybeg = calc.min(col.y.beg, ybeg)
-    yend = calc.max(col.y.end, yend)
-  }
   box(
-    width: xend - xbeg,
-    height: yend - ybeg,
-    stroke: if debug { blue + 1pt },
-    place(dx: -xbeg, dy: -ybeg, elements),
+    stroke: if debug { blue },
+    width: (a.collision_manager.x_max - a.collision_manager.x_min) * 1pt,
+    height: (a.collision_manager.y_max - a.collision_manager.y_min) * 1pt,
+    {
+      let place-curve = place.with(dx: a.collision_manager.x_min * -1pt, dy: a.collision_manager.y_min * -1pt)
+
+      place-curve(
+        block(
+          stroke: if debug { blue + 2pt },
+          width: hours * time-axis-scale * unit-length,
+          height: a.graph_intervals.map(it => it * 1pt).sum(),
+          {
+            place(
+              grid(
+                columns: (1fr,) * hours * 6,
+                rows: a.graph_intervals.map(it => it * 1pt),
+                stroke: gray,
+                ..range(hours * 6).map(it => grid.vline(
+                  x: it,
+                  stroke: stroke(
+                    paint: gray,
+                    dash: "loosely-dotted",
+                  ),
+                )),
+                ..range(hours * 2).map(it => grid.vline(
+                  x: it * 3,
+                  stroke: stroke(
+                    paint: gray,
+                    dash: "densely-dotted",
+                  ),
+                )),
+                ..range(hours).map(it => grid.vline(
+                  x: it * 6,
+                  stroke: stroke(
+                    paint: gray,
+                    dash: "solid",
+                  ),
+                ))
+              ),
+            )
+            place(
+              grid(
+                columns: (1fr,) * hours,
+                rows: (a.graph_intervals.map(it => it * 1pt).sum(), auto),
+                ..range(hours - 1).map(it => place(top + left, place(bottom + center, dy: -5pt)[#(it + start-hour)])),
+                {
+                  place(top + left, place(bottom + center, dy: -5pt)[#(end-hour - 1)])
+                  place(top + right, place(bottom + center, dy: -5pt)[#end-hour])
+                }
+              ),
+            )
+            place(
+              grid(
+                columns: 1fr,
+                rows: a.graph_intervals.map(it => it * 1pt),
+                ..stations-to-draw.map(it => place(
+                  top + left,
+                  place(
+                    horizon + right,
+                    dx: -3pt,
+                    it,
+                  ),
+                ))
+              ),
+            )
+          },
+        ),
+      )
+
+      place-curve({
+        for train in a.trains {
+          for edge in train.edges {
+            let (first, ..rest) = edge.edges
+            let last = rest.last()
+            let ops = (
+              curve.move(pt(first)),
+              ..rest.map(it => curve.line(pt(it))),
+            )
+            place(
+              curve(
+                stroke: stroke(
+                  paint: white,
+                  thickness: 2pt,
+                  cap: "round",
+                  join: "round",
+                ),
+                ..ops,
+              ),
+            )
+            place(
+              curve(
+                stroke: stroke(
+                  paint: trains.at(train.name).stroke,
+                  cap: "round",
+                  join: "round",
+                ),
+                ..ops,
+              ),
+            )
+
+            let (start_angle, end_angle) = edge.labels.angles
+            let placed_label = trains.at(train.name).placed_label
+            place(
+              dx: first.at(0) * 1pt,
+              dy: first.at(1) * 1pt,
+              rotate(origin: top + left, start_angle * 1rad, place(bottom + left, placed_label)),
+            )
+            place(
+              dx: last.at(0) * 1pt,
+              dy: last.at(1) * 1pt,
+              rotate(origin: top + left, end_angle * 1rad, place(bottom + right, placed_label)),
+            )
+            if debug {
+              for (i, pt) in edge.edges.enumerate() {
+                place(
+                  center + horizon,
+                  dx: pt.at(0) * 1pt,
+                  dy: pt.at(1) * 1pt,
+                  text(size: .7em, weight: 600)[#i],
+                )
+              }
+            }
+          }
+        }
+      })
+
+      if debug {
+        for col in a.collision_manager.collisions {
+          let (first, ..rest) = col
+          let ops = (
+            curve.move(pt(first)),
+            ..rest.map(it => curve.line(pt(it))),
+          )
+          place-curve(
+            curve(
+              stroke: stroke(
+                paint: blue,
+                join: "round",
+              ),
+              fill: blue.transparentize(80%),
+              ..ops,
+              curve.close(),
+            ),
+          )
+        }
+      }
+    },
   )
 }
