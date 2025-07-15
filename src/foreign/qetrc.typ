@@ -1,4 +1,9 @@
-#import "../utils.typ": *
+/// Turns three integers representing hours, minutes, and seconds into a total timestamp in seconds.
+///
+/// - h (hour): The hour value
+/// - m (minute): The minute value
+/// - s (second): The second value
+/// -> int
 #let to-timestamp(h, m, s) = {
   return int(h * 3600 + m * 60 + s)
 }
@@ -25,7 +30,7 @@
   box(stroke: 1pt, fill: c1, radius: .1em, pad(.1em, text(size: .6em, weight: 800, fill: c2)[#c3]))
 }
 
-#let read-qetrc(
+#let read(
   qetrc,
   train-label: train => {
     pad(

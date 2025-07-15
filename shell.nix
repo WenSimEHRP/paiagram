@@ -8,12 +8,12 @@ let
 in
 mkShell {
   nativeBuildInputs = [
-    rustup
-    coreutils
-    typst
-    # it has decent CJK support
-    sarasa-gothic
-    just
+    rustup # wasm support
+    coreutils # generic tools
+    typst # compiler
+    typship # shipping tool
+    sarasa-gothic # font for typst
+    just # command runner
   ];
   shellHook = ''
     export FONTCONFIG_FILE=${fonts}

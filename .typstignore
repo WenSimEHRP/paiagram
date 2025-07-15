@@ -1,0 +1,5 @@
+wasm/
+Justfile
+examples/
+*.nix
+.envrc
