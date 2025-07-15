@@ -257,7 +257,7 @@ impl CollisionManager {
                 Ok((self.add_collision(collision).unwrap(), accumulated_distance))
             }
             Some(required_distance) => {
-                if required_distance.value() <= 0.1 {
+                if required_distance.value() <= 0.5 {
                     // No movement needed, but still a collision
                     return Ok((self.add_collision(collision).unwrap(), accumulated_distance));
                 }

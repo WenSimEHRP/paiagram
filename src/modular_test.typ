@@ -112,7 +112,14 @@
     },
   )
 
-  #let station-name-max-width = calc.max(..stations-to-draw.map(it => it.len()))
+  #for file in ("../jinghu.pyetgr", "../examples/sample.pyetgr", "../jingha.pyetgr") {
+    let (sstations, strains, sintervals) = read-qetrc(json(file))
+    {
+      stations += sstations
+      trains += strains
+      intervals += sintervals
+    }
+  }
 
   #let stations-to-draw = stations.keys()
 
@@ -125,14 +132,14 @@
       )),
       cbor.encode((
         stations_to_draw: stations-to-draw,
-        start_time: 0,
+        start_time: 0 * 60 * 60,
         end_time: 24 * 60 * 60,
         unit_length: 1cm / 1pt,
         position_axis_scale_mode: "Logarithmic",
         time_axis_scale_mode: "Linear",
         position_axis_scale: 1.5,
         time_axis_scale: 6.0,
-        label_angle: 85deg.rad(),
+        label_angle: 10deg.rad(),
         line_stack_space: 2pt / 1pt,
       )),
     ),
@@ -149,7 +156,7 @@
   }
 
   #let pt((x, y)) = (x * 1pt, y * 1pt)
-  #let debug = true
+  #let debug = false
 
   #box(
     stroke: if debug { blue },
@@ -160,8 +167,9 @@
 
       place-curve(
         block(
-          width: 100% - (a.collision_manager.x_min * -1pt),
-          height: 100% - (a.collision_manager.y_min * -1pt),
+          stroke: if debug { blue + 2pt },
+          width: 24 * 6.0 * 1cm,
+          height: a.graph_intervals.map(it => it * 1pt).sum(),
           {
             place(
               grid(
