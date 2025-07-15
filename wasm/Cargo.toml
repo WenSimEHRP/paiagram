@@ -1,0 +1,25 @@
+[package]
+name = "paiagram-wasm"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "paiagram_wasm"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ordered-float = { version = "5", features = ["serde"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_with = { version = "3", features = ["macros"] }
+ciborium = "0.2.2"
+typst-wasm-protocol = "0.0.2"
+anyhow = "1.0.98"
+multimap = "0.10.1"
+derive_more = {version = "2.0.1", features = ["full"]}
+
+[profile.release]
+lto = true        # Enable link-time optimization
+strip = true      # Strip symbols from binary
+opt-level = 3     # Optimize for speed
+codegen-units = 1 # Reduce number of codegen units to increase optimizations
+panic = 'abort'   # Abort on panic
