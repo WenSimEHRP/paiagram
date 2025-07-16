@@ -33,13 +33,10 @@
 #let read(
   qetrc,
   train-label: train => {
-    pad(
-      bottom: .14em,
-      text(top-edge: "cap-height", bottom-edge: "baseline")[
-        #place(center + horizon, text(stroke: .1em + white)[#train.name])
-        #train.name
-      ],
-    )
+    pad(bottom: .14em, text(top-edge: "cap-height", bottom-edge: "baseline")[
+      #place(center + horizon, text(stroke: .1em + white)[#train.name])
+      #train.name
+    ])
   },
   train-stroke: train => { red },
 ) = {
@@ -74,15 +71,12 @@
     let placed_label = train-label((name: name, schedule: schedule, raw: train))
     let draw-stroke = train-stroke((name: name, schedule: schedule, raw: train))
     let label = measure(placed_label)
-    trains.insert(
-      name,
-      (
-        label_size: (label.width / 1pt, label.height / 1pt),
-        schedule: schedule,
-        placed_label: placed_label,
-        stroke: draw-stroke,
-      ),
-    )
+    trains.insert(name, (
+      label_size: (label.width / 1pt, label.height / 1pt),
+      schedule: schedule,
+      placed_label: placed_label,
+      stroke: draw-stroke,
+    ))
   }
-  (stations, trains, intervals)
+  (stations: stations, trains: trains, intervals: intervals)
 }
