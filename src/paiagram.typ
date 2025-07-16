@@ -1,19 +1,47 @@
 #let plg = plugin("paiagram_wasm.wasm")
-#let pt((x, y)) = (x * 1pt, y * 1pt)
+#let to-point((x, y)) = (x * 1pt, y * 1pt)
 
+/// Draws a train diagram.
+/// -> content
 #let paiagram(
+  /// Available trains.
+  /// -> dictionary
   trains: (:),
+  /// Available stations.
+  /// -> dictionary
   stations: (:),
+  /// Available intervals.
+  /// -> array
   intervals: (:),
+  /// Stations to draw.
+  /// -> array
   stations-to-draw: (),
+  /// When to start drawing the diagram.
+  /// -> int
   start-hour: 0,
+  /// When to stop drawing the diagram.
+  /// -> int
   end-hour: 24,
+  /// Unit length of the diagram.
+  /// -> length
   unit-length: 1cm,
+  /// How to scale the position axis.
+  /// -> string
   position-axis-scale-mode: "Logarithmic",
+  /// How much to scale the position axis.
+  /// -> float
   position-axis-scale: 1.0,
+  /// How much to scale the time axis.
+  /// -> float
   time-axis-scale: 4.0,
+  /// How much to rotate the labels.
+  /// -> angle
   label-angle: 10deg,
+  /// How much space to leave between stacked lines.
+  /// -> length
   line-stack-space: 2pt,
+  /// Debug mode flick
+  /// -> bool
   debug: false,
 ) = {
   assert(
@@ -117,8 +145,8 @@
             let (first, ..rest) = edge.edges
             let last = rest.last()
             let ops = (
-              curve.move(pt(first)),
-              ..rest.map(it => curve.line(pt(it))),
+              curve.move(to-point(first)),
+              ..rest.map(it => curve.line(to-point(it))),
             )
             place(
               curve(
@@ -172,8 +200,8 @@
         for col in a.collision_manager.collisions {
           let (first, ..rest) = col
           let ops = (
-            curve.move(pt(first)),
-            ..rest.map(it => curve.line(pt(it))),
+            curve.move(to-point(first)),
+            ..rest.map(it => curve.line(to-point(it))),
           )
           place-curve(
             curve(
