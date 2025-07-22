@@ -219,8 +219,8 @@ impl Output {
         for entry_idx in 0..schedule.len() {
             let ce = schedule[entry_idx];
             let ne = schedule.get(entry_idx + 1);
-            let edge_start = (ce.arrival + time_offset).to_graph_length(unit_length);
-            let edge_end = (ce.departure + time_offset).to_graph_length(unit_length);
+            let current_edge_start = (ce.arrival + time_offset).to_graph_length(unit_length);
+            let current_edge_end = (ce.departure + time_offset).to_graph_length(unit_length);
 
             let Some(current_indices) = previous_indices else {
                 if let Some(ne) = ne {
@@ -246,7 +246,9 @@ impl Output {
                 let (_, current_base_height, ref mut current_collision_manager) =
                     self.station_draw_info[current_line_index];
                 let current_height = if ce.departure != ce.arrival {
-                    current_collision_manager.resolve_collisions(edge_start, edge_end)? as f64
+                    current_collision_manager
+                        .resolve_collisions(current_edge_start, current_edge_end)?
+                        as f64
                         * self.config.line_stack_space
                         + current_base_height
                 } else {
@@ -255,45 +257,44 @@ impl Output {
                 let previous_line_index = local_edges
                     .iter()
                     .position(|(_, idx)| current_line_index.abs_diff(*idx) == 1);
-                if ce.clear || previous_line_index.is_none() {
+                let mut matched_edge = if ce.clear || previous_line_index.is_none() {
                     // there is no matching edge, so create a new one
-                    let mut new_edge = Vec::new();
-                    if ce.arrival < self.config.start_time {
-                        if ce.departure < self.config.start_time {
-                            // pass
-                        } else if ce.departure <= self.config.end_time {
-                            new_edge.push(Node(map_start, current_height));
-                            new_edge.push(Node(edge_end, current_height));
-                        } else {
-                            new_edge.push(Node(map_start, current_height));
-                            new_edge.push(Node(map_end, current_height));
-                        }
-                    } else {
-                        if ce.departure <= self.config.end_time {
-                            new_edge.push(Node(edge_start, current_height));
-                            new_edge.push(Node(edge_end, current_height));
-                        } else {
-                            new_edge.push(Node(edge_start, current_height));
-                            new_edge.push(Node(map_end, current_height));
-                        }
-                    }
-                    remaining_edge = Some((new_edge, current_line_index));
+                    Vec::new()
                 } else {
                     // there is a matching edge in the local edges
                     let previous_line_index = previous_line_index.unwrap();
-                    let (mut matched_edge, _) = local_edges.swap_remove(previous_line_index);
-                    // in this case, the edge MUST be already inside the map
-                    if ce.arrival <= self.config.end_time {
-                        if ce.departure <= self.config.end_time {
-                            matched_edge.push(Node(edge_start, current_height));
-                            matched_edge.push(Node(edge_end, current_height));
-                        } else {
-                            matched_edge.push(Node(edge_start, current_height));
+                    local_edges.swap_remove(previous_line_index).0
+                };
+
+                if ce.arrival < self.config.start_time {
+                    if ce.departure < self.config.start_time {
+                        // do nothing
+                    } else if ce.departure <= self.config.end_time {
+                        matched_edge.push(Node(map_start, current_height));
+                        if ce.departure != ce.arrival {
+                            matched_edge.push(Node(current_edge_end, current_height));
+                        }
+                    } else {
+                        matched_edge.push(Node(map_start, current_height));
+                        if ce.departure != ce.arrival {
                             matched_edge.push(Node(map_end, current_height));
                         }
                     }
-                    remaining_edge = Some((matched_edge, current_line_index));
+                } else if ce.arrival <= self.config.end_time {
+                    // ce.departure is always >= ce.arrival
+                    if ce.departure <= self.config.end_time {
+                        matched_edge.push(Node(current_edge_start, current_height));
+                        if ce.departure != ce.arrival {
+                            matched_edge.push(Node(current_edge_end, current_height));
+                        }
+                    } else {
+                        matched_edge.push(Node(current_edge_start, current_height));
+                        if ce.departure != ce.arrival {
+                            matched_edge.push(Node(map_end, current_height));
+                        }
+                    }
                 }
+
                 // The same station cannot appear twice in a row, neither can they appear
                 // with only one station in between. This means that for this specific entry,
                 // there can only be one adjacent next station on the graph.
@@ -301,6 +302,7 @@ impl Output {
 
                 let Some(ne) = ne else {
                     // there isn't a next station
+                    remaining_edge = Some((matched_edge, current_line_index));
                     continue;
                 };
 
@@ -315,70 +317,43 @@ impl Output {
                             }
                         })
                 else {
+                    remaining_edge = Some((matched_edge, current_line_index));
                     continue;
                 };
 
                 // ne.arrival is always >= ce.departure
-                match (
-                    ce.departure < self.config.start_time,
-                    ne.arrival > self.config.end_time,
-                ) {
-                    (true, true) => {
-                        // assert!(remaining_edge.is_none());
-                        // calculate two intersection points
-                        let start_intersection = intersection(
-                            Node(edge_end, current_base_height),
-                            Node(
-                                (ne.arrival + time_offset).to_graph_length(unit_length),
-                                *next_base_height,
-                            ),
-                            map_start,
-                        )?;
-                        let end_intersection = intersection(
-                            Node(edge_end, current_base_height),
-                            Node(
-                                (ne.arrival + time_offset).to_graph_length(unit_length),
-                                *next_base_height,
-                            ),
-                            map_end,
-                        )?;
-                        remaining_edge = Some((
-                            vec![start_intersection, end_intersection],
-                            current_line_index,
-                        ));
+                let next_edge_start = (ne.arrival + time_offset).to_graph_length(unit_length);
+                let start_intersection = || {
+                    intersection(
+                        Node(current_edge_end, current_base_height),
+                        Node(next_edge_start, *next_base_height),
+                        map_start,
+                    )
+                };
+                let end_intersection = || {
+                    intersection(
+                        Node(current_edge_end, current_base_height),
+                        Node(next_edge_start, *next_base_height),
+                        map_end,
+                    )
+                };
+                if ce.departure < self.config.start_time {
+                    if ne.arrival < self.config.start_time {
+                        // do nothing
+                    } else if ne.arrival <= self.config.end_time {
+                        matched_edge.push(start_intersection()?);
+                    } else {
+                        matched_edge.push(start_intersection()?);
+                        matched_edge.push(end_intersection()?);
                     }
-                    (true, false) => {
-                        // assert!(remaining_edge.is_none());
-                        // calculate two intersection points
-                        let start_intersection = intersection(
-                            Node(edge_end, current_base_height),
-                            Node(
-                                (ne.arrival + time_offset).to_graph_length(unit_length),
-                                *next_base_height,
-                            ),
-                            map_start,
-                        )?;
-                        remaining_edge = Some((vec![start_intersection], current_line_index));
-                    }
-                    (false, true) => {
-                        // remaining edge must be some
-                        assert!(remaining_edge.is_some());
-                        let (mut matched_edge, _) = remaining_edge.unwrap();
-                        let end_intersection = intersection(
-                            Node(edge_end, current_base_height),
-                            Node(
-                                (ne.arrival + time_offset).to_graph_length(unit_length),
-                                *next_base_height,
-                            ),
-                            map_end,
-                        )?;
-                        matched_edge.push(end_intersection);
-                        remaining_edge = Some((matched_edge, current_line_index));
-                    }
-                    (false, false) => {
+                } else {
+                    if ne.arrival <= self.config.end_time {
                         // do nothing for now
+                    } else {
+                        matched_edge.push(end_intersection()?);
                     }
                 }
+                remaining_edge = Some((matched_edge, current_line_index));
             }
             if let Some(remaining_edge) = remaining_edge {
                 remaining_edges.push(remaining_edge);
@@ -477,8 +452,8 @@ impl Output {
         label_width: GraphLength,
         label_height: GraphLength,
     ) -> Result<(f64, f64)> {
-        let edge_start = *edge.first().unwrap();
-        let edge_end = *edge.last().unwrap();
+        let current_edge_start = *edge.first().unwrap();
+        let current_edge_end = *edge.last().unwrap();
 
         let start_label_direction = if edge.len() > 2 {
             // check the first three nodes to determine general direction
@@ -502,7 +477,7 @@ impl Output {
         // Add label at the beginning of the edge
         let start_label_angle = self.add_label_to_edge(
             edge,
-            edge_start,
+            current_edge_start,
             label_width,
             label_height,
             &start_label_direction,
@@ -536,7 +511,7 @@ impl Output {
         // Insert at the end
         let end_label_angle = self.add_label_to_edge(
             edge,
-            edge_end,
+            current_edge_end,
             label_width,
             label_height,
             &end_label_direction,
