@@ -1,14 +1,21 @@
 # Paiagram
 
-Paiagram is a typst package for making transportation timetable diagrams.
+Paiagram is a typst package for making transportation timetable diagrams, or a train running chart, or whatever you call it.
 
-## Features
+## Using Paiagram
 
-- Reading from qETRC timetable files.
+To start, you must already have the following items:
 
-## Planned
+- **Train** (or any other means of transport) timetable information.
+- **Station** information.
+- (Optional, recommended) station **interval** information.
+- A set of stations to draw on the diagram. This is not the same as station information.
 
-- OuDiaSecond support.
+For more information, please check examples in the `examples` folder.
+
+## Importing from other files
+
+Paiagram currently supports importing data from qETRC files. Support for other formats (oudiasecond, ETRC, etc.) are planned.
 
 ## Showcase
 
