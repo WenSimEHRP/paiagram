@@ -1,22 +1,26 @@
-#import "../src/lib.typ": paiagram
-#import "../src/lib.typ": qetrc
-#set text(font: "Sarasa Mono SC", top-edge: "bounds", bottom-edge: "bounds")
+// Import paiagram package
+#import "../src/lib.typ": paiagram, qetrc
+// Set page size to be auto for flexibility
 #set page(width: auto, height: auto)
 
+// Since qetrc.read uses the `measure` functionto provide label size information,
+// we must wrap it in the #context block
 #context {
-  let data = qetrc.read(json("sample.pyetgr"), train-label: train => pad(.2em, {
-    grid(
-      columns: 1,
-      rows: 2,
-      align: center + horizon,
-      gutter: .1em,
-      grid(
-        columns: 2,
-        gutter: .1em,
-        qetrc.match-name-color(train.name), train.name,
-      ),
-      text(size: .7em, weight: 600)[#(train.raw.sfz)---#(train.raw.zdz)]
-    )
-  }))
-  paiagram(..data, stations-to-draw: data.stations.keys())
+  // read information from a qETRC pyetgr timetable file
+  let data = qetrc.read(json("sample.pyetgr"))
+  // the return type of qetrc.read should be a dictionary
+  // with keys: "stations", "trains", "intervals"
+  assert(type(data) == dictionary, message: "The return type of qetrc.read should be a dictionary")
+  // render the timetable diagram
+  paiagram(
+    // here we use the ..dictionary notation to spread the dictionary
+    ..data,
+    // specify the stations to draw
+    stations-to-draw: data.stations.keys(),
+    // specify the start hour. The start hour could be any integer
+    start-hour: -10,
+    // specify the end hour. The end hour should be an integer,
+    // however it cannot be smaller than the start hour
+    end-hour: 31,
+  )
 }
