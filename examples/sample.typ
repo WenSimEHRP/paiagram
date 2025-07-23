@@ -18,9 +18,9 @@
     // specify the stations to draw
     stations-to-draw: data.stations.keys(),
     // specify the start hour. The start hour could be any integer
-    start-hour: -10,
+    start-hour: 0,
     // specify the end hour. The end hour should be an integer,
     // however it cannot be smaller than the start hour
-    end-hour: 31,
+    end-hour: 24,
   )
 }
