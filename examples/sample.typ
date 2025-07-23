@@ -1,5 +1,5 @@
 // Import paiagram package
-#import "../src/lib.typ": paiagram, qetrc
+#import "@preview/paiagram:0.1.1"
 // Set page size to be auto for flexibility
 #set page(width: auto, height: auto)
 
@@ -7,12 +7,12 @@
 // we must wrap it in the #context block
 #context {
   // read information from a qETRC pyetgr timetable file
-  let data = qetrc.read(json("sample.pyetgr"))
+  let data = paiagram.qetrc.read(json("sample.pyetgr"))
   // the return type of qetrc.read should be a dictionary
   // with keys: "stations", "trains", "intervals"
   assert(type(data) == dictionary, message: "The return type of qetrc.read should be a dictionary")
   // render the timetable diagram
-  paiagram(
+  paiagram.paiagram(
     // here we use the ..dictionary notation to spread the dictionary
     ..data,
     // specify the stations to draw
